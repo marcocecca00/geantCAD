@@ -10,19 +10,19 @@ ViewCube::ViewCube(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedSize(100, 100);  // Compact cube - no container needed
+    setFixedSize(100, 130);  // Extra space for axis indicator
     setAttribute(Qt::WA_TranslucentBackground, true);  // Transparent background
     
-    // Modern colors - dark theme with accent
-    frontColor_ = QColor(60, 70, 85);
-    backColor_ = QColor(50, 58, 70);
-    leftColor_ = QColor(55, 65, 78);
-    rightColor_ = QColor(55, 65, 78);
-    topColor_ = QColor(70, 82, 100);
-    bottomColor_ = QColor(45, 52, 62);
-    edgeColor_ = QColor(90, 100, 115);
-    textColor_ = QColor(200, 210, 220);
-    hoverColor_ = QColor(80, 140, 220);  // Accent blue on hover
+    // Colored faces like axis colors (more distinct)
+    frontColor_ = QColor(80, 150, 80);    // Green (Y+)
+    backColor_ = QColor(60, 100, 60);     // Dark green (Y-)
+    leftColor_ = QColor(150, 80, 80);     // Red (X-)
+    rightColor_ = QColor(200, 100, 100);  // Light red (X+)
+    topColor_ = QColor(100, 130, 200);    // Blue (Z+)
+    bottomColor_ = QColor(70, 90, 140);   // Dark blue (Z-)
+    edgeColor_ = QColor(40, 40, 45);
+    textColor_ = QColor(255, 255, 255);
+    hoverColor_ = QColor(255, 200, 100);  // Bright orange on hover
     
     // Initialize with isometric view orientation
     cameraOrientation_ = QQuaternion::fromEulerAngles(-30.0f, 45.0f, 0.0f);
@@ -206,21 +206,60 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
         if (i >= faces_.size() - 3) {
             QPointF center = face.polygon.boundingRect().center();
             
-            QFont font("Segoe UI", 9);
+            QFont font("Segoe UI", 8);
             font.setBold(true);
             painter.setFont(font);
             
             // Text shadow
-            painter.setPen(QColor(0, 0, 0, 150));
-            painter.drawText(QRectF(center.x() - 25 + 1, center.y() - 7 + 1, 50, 14), Qt::AlignCenter, face.label);
+            painter.setPen(QColor(0, 0, 0, 180));
+            painter.drawText(QRectF(center.x() - 20 + 1, center.y() - 6 + 1, 40, 12), Qt::AlignCenter, face.label);
             
             // Main text
-            painter.setPen(face.hovered ? Qt::white : textColor_);
-            painter.drawText(QRectF(center.x() - 25, center.y() - 7, 50, 14), Qt::AlignCenter, face.label);
+            painter.setPen(face.hovered ? Qt::black : textColor_);
+            painter.drawText(QRectF(center.x() - 20, center.y() - 6, 40, 12), Qt::AlignCenter, face.label);
         }
     }
     
-    // No axis indicators - cleaner look
+    // Draw small axis indicator below the cube
+    float axisX = 20;
+    float axisY = height() - 25;
+    float axisLen = 15;
+    
+    // Transform axes by camera orientation
+    QVector3D xAxis = cameraOrientation_.rotatedVector(QVector3D(1, 0, 0));
+    QVector3D yAxis = cameraOrientation_.rotatedVector(QVector3D(0, 1, 0));
+    QVector3D zAxis = cameraOrientation_.rotatedVector(QVector3D(0, 0, 1));
+    
+    // X axis (red)
+    painter.setPen(QPen(QColor(220, 80, 80), 2));
+    painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + xAxis.x() * axisLen, axisY - xAxis.y() * axisLen));
+    
+    // Y axis (green)
+    painter.setPen(QPen(QColor(80, 200, 80), 2));
+    painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + yAxis.x() * axisLen, axisY - yAxis.y() * axisLen));
+    
+    // Z axis (blue)
+    painter.setPen(QPen(QColor(80, 120, 220), 2));
+    painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + zAxis.x() * axisLen, axisY - zAxis.y() * axisLen));
+    
+    // Draw zoom/magnifier icon on the right side
+    float magX = width() - 25;
+    float magY = height() - 20;
+    painter.setPen(QPen(QColor(180, 180, 190), 1.5));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(QPointF(magX - 3, magY - 3), 8, 8);  // Lens
+    painter.drawLine(QPointF(magX + 4, magY + 4), QPointF(magX + 10, magY + 10));  // Handle
+    
+    // Axis labels
+    QFont smallFont("Segoe UI", 7);
+    smallFont.setBold(true);
+    painter.setFont(smallFont);
+    painter.setPen(QColor(220, 80, 80));
+    painter.drawText(QPointF(axisX + xAxis.x() * axisLen + 2, axisY - xAxis.y() * axisLen + 3), "X");
+    painter.setPen(QColor(80, 200, 80));
+    painter.drawText(QPointF(axisX + yAxis.x() * axisLen + 2, axisY - yAxis.y() * axisLen + 3), "Y");
+    painter.setPen(QColor(80, 120, 220));
+    painter.drawText(QPointF(axisX + zAxis.x() * axisLen + 2, axisY - zAxis.y() * axisLen + 3), "Z");
 }
 
 void ViewCube::drawAxisIndicators(QPainter& painter) {

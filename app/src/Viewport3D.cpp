@@ -378,8 +378,8 @@ void Viewport3D::createGrid() {
     // Add grid to renderer (at back)
     renderer_->AddActor(gridActor_);
     
-    // Axis length proportional to typical object size (50mm) - show +/- 100mm
-    const double axisLength = 100.0;
+    // Axis length proportional to typical object size (50mm) - show +/- 200mm
+    const double axisLength = 200.0;
     
     // Create X axis line (red)
     vtkSmartPointer<vtkLineSource> xAxisLine = vtkSmartPointer<vtkLineSource>::New();
@@ -1561,6 +1561,40 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
     QVTKOpenGLNativeWidget::mouseReleaseEvent(event);
 #else
     QWidget::mouseReleaseEvent(event);
+#endif
+}
+
+void Viewport3D::wheelEvent(QWheelEvent* event) {
+#ifndef GEANTCAD_NO_VTK
+    if (!renderer_ || !renderWindow_) {
+        QVTKOpenGLNativeWidget::wheelEvent(event);
+        return;
+    }
+    
+    vtkCamera* camera = renderer_->GetActiveCamera();
+    if (!camera) {
+        QVTKOpenGLNativeWidget::wheelEvent(event);
+        return;
+    }
+    
+    // Fast zoom - 20% per scroll step
+    double zoomFactor = 1.2;
+    
+    if (event->angleDelta().y() > 0) {
+        // Zoom in - move camera closer
+        camera->Dolly(zoomFactor);
+    } else if (event->angleDelta().y() < 0) {
+        // Zoom out - move camera away
+        camera->Dolly(1.0 / zoomFactor);
+    }
+    
+    // Reset clipping range to avoid clipping issues
+    renderer_->ResetCameraClippingRange();
+    renderWindow_->Render();
+    
+    event->accept();
+#else
+    QWidget::wheelEvent(event);
 #endif
 }
 
