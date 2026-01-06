@@ -1,6 +1,7 @@
 #include "Command.hh"
 #include "SceneGraph.hh"
 #include <algorithm>
+#include <iostream>
 
 namespace geantcad {
 
@@ -52,14 +53,15 @@ DeleteVolumeCommand::DeleteVolumeCommand(SceneGraph* sceneGraph, VolumeNode* nod
             childIndex_ = (it != siblings.end()) ? std::distance(siblings.begin(), it) : 0;
         }
         
-        // Save state
+        // Save state using JSON serialization for complete state preservation
         if (node_->getShape()) {
-            // Clone shape params (simplified - would need proper cloning)
+            nlohmann::json shapeJson = node_->getShape()->toJson();
+            shape_ = Shape::fromJson(shapeJson);
         }
         material_ = node_->getMaterial();
         transform_ = node_->getTransform();
         
-        // Save children
+        // Save children references (they will be deleted by execute, so we need to recreate them)
         for (auto* child : node_->getChildren()) {
             children_.push_back(child);
         }
@@ -68,15 +70,43 @@ DeleteVolumeCommand::DeleteVolumeCommand(SceneGraph* sceneGraph, VolumeNode* nod
 
 void DeleteVolumeCommand::execute() {
     if (node_ && sceneGraph_) {
-        sceneGraph_->removeVolume(node_);
+        // Store reference before deletion
+        VolumeNode* nodeToDelete = node_;
+        node_ = nullptr; // Clear reference to avoid use-after-delete
+        
+        // Save full state using JSON before deletion
+        nlohmann::json nodeJson = nodeToDelete->toJson();
+        
+        // Delete the node (this will also delete children)
+        sceneGraph_->removeVolume(nodeToDelete);
+        
+        // Store JSON for undo
+        nodeJson_ = nodeJson;
     }
 }
 
 void DeleteVolumeCommand::undo() {
-    if (!node_ || !sceneGraph_) return;
+    if (!sceneGraph_ || nodeJson_.is_null()) return;
     
-    // Recreate node (simplified - full implementation would restore all state)
-    // For MVP, this is a placeholder
+    // Recreate node from JSON
+    try {
+        auto restoredNode = VolumeNode::fromJson(nodeJson_);
+        node_ = restoredNode.release();
+        
+        // Reattach to parent
+        if (parent_) {
+            parent_->addChild(node_);
+        } else {
+            // If no parent, add to root
+            if (sceneGraph_->getRoot()) {
+                sceneGraph_->getRoot()->addChild(node_);
+            }
+        }
+        
+        // Note: SceneGraph notifications will be handled by addChild internally
+    } catch (const std::exception& e) {
+        std::cerr << "Error restoring deleted node: " << e.what() << std::endl;
+    }
 }
 
 // TransformVolumeCommand
@@ -137,12 +167,10 @@ VolumeNode* DuplicateVolumeCommand::duplicateNodeRecursive(VolumeNode* source) {
     // Copy material
     duplicate->setMaterial(source->getMaterial());
     
-    // Copy shape (simplified - would need proper cloning)
-    // For MVP, we'll recreate from shape type
+    // Clone shape using JSON serialization
     if (source->getShape()) {
-        const Shape* shape = source->getShape();
-        // TODO: Clone shape properly
-        // For now, just copy the shape pointer (not ideal, but works for MVP)
+        nlohmann::json shapeJson = source->getShape()->toJson();
+        duplicate->setShape(Shape::fromJson(shapeJson));
     }
     
     // Copy SD config
@@ -181,6 +209,94 @@ void ModifyShapeCommand::execute() {
 void ModifyShapeCommand::undo() {
     if (node_ && node_->getShape()) {
         node_->getShape()->getParams() = oldParams_;
+    }
+}
+
+// ModifyNameCommand
+ModifyNameCommand::ModifyNameCommand(VolumeNode* node, const std::string& newName)
+    : node_(node)
+    , newName_(newName)
+{
+    if (node_) {
+        oldName_ = node_->getName();
+    }
+}
+
+void ModifyNameCommand::execute() {
+    if (node_) {
+        node_->setName(newName_);
+    }
+}
+
+void ModifyNameCommand::undo() {
+    if (node_) {
+        node_->setName(oldName_);
+    }
+}
+
+// ModifyMaterialCommand
+ModifyMaterialCommand::ModifyMaterialCommand(VolumeNode* node, std::shared_ptr<Material> newMaterial)
+    : node_(node)
+    , newMaterial_(newMaterial)
+{
+    if (node_) {
+        oldMaterial_ = node_->getMaterial();
+    }
+}
+
+void ModifyMaterialCommand::execute() {
+    if (node_) {
+        node_->setMaterial(newMaterial_);
+    }
+}
+
+void ModifyMaterialCommand::undo() {
+    if (node_) {
+        node_->setMaterial(oldMaterial_);
+    }
+}
+
+// ModifySDConfigCommand
+ModifySDConfigCommand::ModifySDConfigCommand(VolumeNode* node, const SensitiveDetectorConfig& newConfig)
+    : node_(node)
+    , newConfig_(newConfig)
+{
+    if (node_) {
+        oldConfig_ = node_->getSDConfig();
+    }
+}
+
+void ModifySDConfigCommand::execute() {
+    if (node_) {
+        node_->getSDConfig() = newConfig_;
+    }
+}
+
+void ModifySDConfigCommand::undo() {
+    if (node_) {
+        node_->getSDConfig() = oldConfig_;
+    }
+}
+
+// ModifyOpticalConfigCommand
+ModifyOpticalConfigCommand::ModifyOpticalConfigCommand(VolumeNode* node, const OpticalSurfaceConfig& newConfig)
+    : node_(node)
+    , newConfig_(newConfig)
+{
+    if (node_) {
+        oldConfig_ = node_->getOpticalConfig();
+    }
+}
+
+void ModifyOpticalConfigCommand::execute() {
+    if (node_) {
+        node_->getOpticalConfig() = newConfig_;
+    }
+}
+
+void ModifyOpticalConfigCommand::undo() {
+    if (node_) {
+        node_->getOpticalConfig() = oldConfig_;
     }
 }
 

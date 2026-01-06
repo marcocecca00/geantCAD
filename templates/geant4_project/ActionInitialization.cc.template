@@ -2,6 +2,7 @@
 #include "RunAction.hh"
 #include "EventAction.hh"
 #include "SteppingAction.hh"
+#include "PrimaryGeneratorAction.hh"
 
 ActionInitialization::ActionInitialization() {
 }
@@ -18,9 +19,16 @@ void ActionInitialization::BuildForMaster() const {
 }
 
 void ActionInitialization::Build() const {
+    PrimaryGeneratorAction* pga = new PrimaryGeneratorAction();
+    SetUserAction(pga);
     SetUserAction(new RunAction());
     SetUserAction(new EventAction());
     SetUserAction(new SteppingAction());
+    
+    // Configure PrimaryGeneratorAction from ParticleGunConfig
+    // ==== USER CODE BEGIN PrimaryGeneratorConfig
+{{primary_generator_config}}
+    // ==== USER CODE END PrimaryGeneratorConfig
     
     // ==== USER CODE BEGIN Build
     // Custom worker thread actions

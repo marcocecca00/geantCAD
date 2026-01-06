@@ -1,0 +1,70 @@
+#ifndef CalorimeterHit_h
+#define CalorimeterHit_h 1
+
+#include <G4VHit.hh>
+#include <G4THitsCollection.hh>
+#include <G4Allocator.hh>
+#include <G4ThreeVector.hh>
+
+class CalorimeterHit : public G4VHit {
+public:
+    CalorimeterHit();
+    virtual ~CalorimeterHit();
+    CalorimeterHit(const CalorimeterHit& right);
+    const CalorimeterHit& operator=(const CalorimeterHit& right);
+    G4int operator==(const CalorimeterHit& right) const;
+
+    inline void* operator new(size_t);
+    inline void operator delete(void* aHit);
+
+    virtual void Draw();
+    virtual void Print();
+
+    void SetTrackID(G4int track) { trackID_ = track; }
+    G4int GetTrackID() const { return trackID_; }
+
+    void SetParentID(G4int parent) { parentID_ = parent; }
+    G4int GetParentID() const { return parentID_; }
+
+    void SetEdep(G4double de) { edep_ = de; }
+    G4double GetEdep() const { return edep_; }
+
+    void SetPos(G4ThreeVector xyz) { pos_ = xyz; }
+    G4ThreeVector GetPos() const { return pos_; }
+
+    void SetTime(G4double time) { time_ = time; }
+    G4double GetTime() const { return time_; }
+
+    void SetVolumeName(const G4String& name) { volumeName_ = name; }
+    G4String GetVolumeName() const { return volumeName_; }
+
+    void SetCopyNumber(G4int copyNo) { copyNumber_ = copyNo; }
+    G4int GetCopyNumber() const { return copyNumber_; }
+
+private:
+    G4int trackID_;
+    G4int parentID_;
+    G4double edep_;
+    G4ThreeVector pos_;
+    G4double time_;
+    G4String volumeName_;
+    G4int copyNumber_;
+};
+
+typedef G4THitsCollection<CalorimeterHit> CalorimeterHitsCollection;
+
+extern G4ThreadLocal G4Allocator<CalorimeterHit>* CalorimeterHitAllocator;
+
+inline void* CalorimeterHit::operator new(size_t) {
+    if (!CalorimeterHitAllocator) {
+        CalorimeterHitAllocator = new G4Allocator<CalorimeterHit>;
+    }
+    return (void*)CalorimeterHitAllocator->MallocSingle();
+}
+
+inline void CalorimeterHit::operator delete(void* aHit) {
+    CalorimeterHitAllocator->FreeSingle((CalorimeterHit*) aHit);
+}
+
+#endif
+

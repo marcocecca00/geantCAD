@@ -74,8 +74,33 @@ struct TrdParams {
     double dz = 10.0;  // half-height z
 };
 
+/**
+ * Parametri per Polycone
+ * Sezioni coniche multiple lungo l'asse Z
+ */
+struct PolyconeParams {
+    double sphi = 0.0;  // start phi in degrees
+    double dphi = 360.0; // delta phi in degrees
+    std::vector<double> zPlanes;    // z positions (mm) - half-heights
+    std::vector<double> rmin;      // inner radius at each z plane (mm)
+    std::vector<double> rmax;      // outer radius at each z plane (mm)
+};
+
+/**
+ * Parametri per Polyhedra
+ * Come Polycone ma con facce poligonali invece di circolari
+ */
+struct PolyhedraParams {
+    int numSides = 6;   // number of sides (e.g., 6 = hexagon)
+    double sphi = 0.0;  // start phi in degrees
+    double dphi = 360.0; // delta phi in degrees
+    std::vector<double> zPlanes;    // z positions (mm) - half-heights
+    std::vector<double> rmin;      // inner radius at each z plane (mm)
+    std::vector<double> rmax;      // outer radius at each z plane (mm)
+};
+
 // Variant per i parametri shape
-using ShapeParams = std::variant<BoxParams, TubeParams, SphereParams, ConeParams, TrdParams>;
+using ShapeParams = std::variant<BoxParams, TubeParams, SphereParams, ConeParams, TrdParams, PolyconeParams, PolyhedraParams>;
 
 /**
  * Classe base astratta per le shape geometriche.
@@ -122,6 +147,8 @@ std::unique_ptr<Shape> makeTube(double rmin, double rmax, double dz, double sphi
 std::unique_ptr<Shape> makeSphere(double rmin, double rmax, double sphi = 0.0, double dphi = 360.0, double stheta = 0.0, double dtheta = 180.0);
 std::unique_ptr<Shape> makeCone(double rmin1, double rmax1, double rmin2, double rmax2, double dz, double sphi = 0.0, double dphi = 360.0);
 std::unique_ptr<Shape> makeTrd(double dx1, double dx2, double dy1, double dy2, double dz);
+std::unique_ptr<Shape> makePolycone(double sphi, double dphi, const std::vector<double>& zPlanes, const std::vector<double>& rmin, const std::vector<double>& rmax);
+std::unique_ptr<Shape> makePolyhedra(int numSides, double sphi, double dphi, const std::vector<double>& zPlanes, const std::vector<double>& rmin, const std::vector<double>& rmax);
 
 } // namespace geantcad
 

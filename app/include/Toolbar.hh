@@ -11,12 +11,7 @@ public:
     explicit Toolbar(QWidget* parent = nullptr);
 
 signals:
-    void createBox();
-    void createTube();
-    void createSphere();
-    void createCone();
-    void createTrd();
-    
+    // Shape creation moved to Insert -> Shape menu
     void toolSelect();
     void toolMove();
     void toolRotate();

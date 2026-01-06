@@ -52,6 +52,7 @@ private:
     std::shared_ptr<Material> material_;
     Transform transform_;
     std::vector<VolumeNode*> children_; // Store children for undo
+    nlohmann::json nodeJson_; // Full node state for undo
 };
 
 class TransformVolumeCommand : public Command {
@@ -96,6 +97,66 @@ private:
     ShapeParams oldParams_;
     ShapeParams newParams_;
 };
+
+class ModifyNameCommand : public Command {
+public:
+    ModifyNameCommand(VolumeNode* node, const std::string& newName);
+    void execute() override;
+    void undo() override;
+    std::string getDescription() const override { return "Rename " + (node_ ? node_->getName() : "volume"); }
+
+private:
+    VolumeNode* node_;
+    std::string oldName_;
+    std::string newName_;
+};
+
+class ModifyMaterialCommand : public Command {
+public:
+    ModifyMaterialCommand(VolumeNode* node, std::shared_ptr<Material> newMaterial);
+    void execute() override;
+    void undo() override;
+    std::string getDescription() const override { return "Modify Material " + (node_ ? node_->getName() : "volume"); }
+
+private:
+    VolumeNode* node_;
+    std::shared_ptr<Material> oldMaterial_;
+    std::shared_ptr<Material> newMaterial_;
+};
+
+class ModifySDConfigCommand : public Command {
+public:
+    ModifySDConfigCommand(VolumeNode* node, const SensitiveDetectorConfig& newConfig);
+    void execute() override;
+    void undo() override;
+    std::string getDescription() const override { return "Modify SD Config " + (node_ ? node_->getName() : "volume"); }
+
+private:
+    VolumeNode* node_;
+    SensitiveDetectorConfig oldConfig_;
+    SensitiveDetectorConfig newConfig_;
+};
+
+class ModifyOpticalConfigCommand : public Command {
+public:
+    ModifyOpticalConfigCommand(VolumeNode* node, const OpticalSurfaceConfig& newConfig);
+    void execute() override;
+    void undo() override;
+    std::string getDescription() const override { return "Modify Optical Config " + (node_ ? node_->getName() : "volume"); }
+
+private:
+    VolumeNode* node_;
+    OpticalSurfaceConfig oldConfig_;
+    OpticalSurfaceConfig newConfig_;
+};
+
+// Convenience command aliases (used by Inspector)
+using SetNameCommand = ModifyNameCommand;
+using SetMaterialCommand = ModifyMaterialCommand;
+using SetShapeCommand = ModifyShapeCommand;
+using SetSensitiveDetectorCommand = ModifySDConfigCommand;
+using SetOpticalSurfaceCommand = ModifyOpticalConfigCommand;
+using SetTransformCommand = TransformVolumeCommand;
 
 } // namespace geantcad
 

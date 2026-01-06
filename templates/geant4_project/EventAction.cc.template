@@ -18,7 +18,7 @@ void EventAction::BeginOfEventAction(const G4Event* event) {
 
 void EventAction::EndOfEventAction(const G4Event* event) {
     // ==== USER CODE BEGIN EndOfEventAction
-    // Custom end of event code
+{{event_action_output}}
     // ==== USER CODE END EndOfEventAction
 }
 

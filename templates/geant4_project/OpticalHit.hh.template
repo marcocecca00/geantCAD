@@ -1,0 +1,90 @@
+#ifndef OpticalHit_h
+#define OpticalHit_h 1
+
+#include <G4VHit.hh>
+#include <G4THitsCollection.hh>
+#include <G4Allocator.hh>
+#include <G4ThreeVector.hh>
+
+class OpticalHit : public G4VHit {
+public:
+    OpticalHit();
+    virtual ~OpticalHit();
+    OpticalHit(const OpticalHit& right);
+    const OpticalHit& operator=(const OpticalHit& right);
+    G4int operator==(const OpticalHit& right) const;
+
+    inline void* operator new(size_t);
+    inline void operator delete(void* aHit);
+
+    virtual void Draw();
+    virtual void Print();
+
+    void SetTrackID(G4int track) { trackID_ = track; }
+    G4int GetTrackID() const { return trackID_; }
+
+    void SetParentID(G4int parent) { parentID_ = parent; }
+    G4int GetParentID() const { return parentID_; }
+
+    void SetPos(G4ThreeVector xyz) { pos_ = xyz; }
+    G4ThreeVector GetPos() const { return pos_; }
+
+    void SetMom(G4ThreeVector p) { mom_ = p; }
+    G4ThreeVector GetMom() const { return mom_; }
+
+    void SetWavelength(G4double lambda) { wavelength_ = lambda; }
+    G4double GetWavelength() const { return wavelength_; }
+
+    void SetTime(G4double time) { time_ = time; }
+    G4double GetTime() const { return time_; }
+
+    void SetGlobalTime(G4double time) { globalTime_ = time; }
+    G4double GetGlobalTime() const { return globalTime_; }
+
+    void SetLocalTime(G4double time) { localTime_ = time; }
+    G4double GetLocalTime() const { return localTime_; }
+
+    void SetProperTime(G4double time) { properTime_ = time; }
+    G4double GetProperTime() const { return properTime_; }
+
+    void SetDetected(G4bool detected) { detected_ = detected; }
+    G4bool GetDetected() const { return detected_; }
+
+    void SetVolumeName(const G4String& name) { volumeName_ = name; }
+    G4String GetVolumeName() const { return volumeName_; }
+
+    void SetCopyNumber(G4int copyNo) { copyNumber_ = copyNo; }
+    G4int GetCopyNumber() const { return copyNumber_; }
+
+private:
+    G4int trackID_;
+    G4int parentID_;
+    G4ThreeVector pos_;
+    G4ThreeVector mom_;
+    G4double wavelength_; // in nm
+    G4double time_;
+    G4double globalTime_;
+    G4double localTime_;
+    G4double properTime_;
+    G4bool detected_;
+    G4String volumeName_;
+    G4int copyNumber_;
+};
+
+typedef G4THitsCollection<OpticalHit> OpticalHitsCollection;
+
+extern G4ThreadLocal G4Allocator<OpticalHit>* OpticalHitAllocator;
+
+inline void* OpticalHit::operator new(size_t) {
+    if (!OpticalHitAllocator) {
+        OpticalHitAllocator = new G4Allocator<OpticalHit>;
+    }
+    return (void*)OpticalHitAllocator->MallocSingle();
+}
+
+inline void OpticalHit::operator delete(void* aHit) {
+    OpticalHitAllocator->FreeSingle((OpticalHit*) aHit);
+}
+
+#endif
+

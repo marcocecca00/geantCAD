@@ -1,0 +1,70 @@
+#ifndef PrimaryGeneratorAction_h
+#define PrimaryGeneratorAction_h 1
+
+#include <G4VUserPrimaryGeneratorAction.hh>
+#include <G4ParticleGun.hh>
+#include <G4ThreeVector.hh>
+#include <G4String.hh>
+
+class G4Event;
+class G4ParticleDefinition;
+
+class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction {
+public:
+    PrimaryGeneratorAction();
+    virtual ~PrimaryGeneratorAction();
+
+    virtual void GeneratePrimaries(G4Event* event);
+
+    // Configuration methods
+    void SetParticleType(const G4String& type);
+    void SetEnergyMode(G4int mode); // 0=Mono, 1=Uniform, 2=Gaussian
+    void SetEnergy(G4double energy);
+    void SetEnergyRange(G4double min, G4double max);
+    void SetEnergyGaussian(G4double mean, G4double sigma);
+    
+    void SetPositionMode(G4int mode); // 0=Point, 1=Volume, 2=Surface
+    void SetPosition(G4double x, G4double y, G4double z);
+    void SetPositionVolume(const G4String& volumeName);
+    void SetPositionRadius(G4double radius);
+    
+    void SetDirectionMode(G4int mode); // 0=Isotropic, 1=Fixed, 2=Cone
+    void SetDirection(G4double x, G4double y, G4double z);
+    void SetConeAngle(G4double angle);
+    
+    void SetNumberOfParticles(G4int n) { numberOfParticles_ = n; }
+
+private:
+    G4ParticleGun* particleGun_;
+    
+    // Energy configuration
+    G4int energyMode_; // 0=Mono, 1=Uniform, 2=Gaussian
+    G4double energy_;
+    G4double energyMin_;
+    G4double energyMax_;
+    G4double energyMean_;
+    G4double energySigma_;
+    
+    // Position configuration
+    G4int positionMode_; // 0=Point, 1=Volume, 2=Surface
+    G4ThreeVector position_;
+    G4String positionVolume_;
+    G4double positionRadius_;
+    
+    // Direction configuration
+    G4int directionMode_; // 0=Isotropic, 1=Fixed, 2=Cone
+    G4ThreeVector direction_;
+    G4double coneAngle_;
+    
+    G4int numberOfParticles_;
+    
+    // Helper methods
+    G4double GenerateEnergy();
+    G4ThreeVector GeneratePosition();
+    G4ThreeVector GenerateDirection();
+    G4ThreeVector GenerateIsotropicDirection();
+    G4ThreeVector GenerateConeDirection();
+};
+
+#endif
+

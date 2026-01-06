@@ -36,6 +36,7 @@ private slots:
 private:
     void setupUI();
     void updateUI();
+    void updatePreview();
     
     // Particle type
     QComboBox* particleTypeCombo_;
@@ -68,6 +69,9 @@ private:
     
     // Number of particles
     QSpinBox* numberOfParticlesSpin_;
+    
+    // Preview
+    QLabel* previewLabel_;
     
     ParticleGunConfig config_;
 };

@@ -3,6 +3,7 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QPushButton>
 
 namespace geantcad {
 
@@ -56,6 +57,17 @@ void OutputPanel::setupUI() {
     fieldsGroup_ = new QGroupBox("Fields", this);
     QVBoxLayout* fieldsLayout = new QVBoxLayout(fieldsGroup_);
     
+    // Add buttons for quick selection
+    QHBoxLayout* fieldsButtonLayout = new QHBoxLayout();
+    QPushButton* selectAllFieldsButton = new QPushButton("Select All", this);
+    QPushButton* deselectAllFieldsButton = new QPushButton("Deselect All", this);
+    connect(selectAllFieldsButton, &QPushButton::clicked, this, &OutputPanel::onSelectAllFields);
+    connect(deselectAllFieldsButton, &QPushButton::clicked, this, &OutputPanel::onDeselectAllFields);
+    fieldsButtonLayout->addWidget(selectAllFieldsButton);
+    fieldsButtonLayout->addWidget(deselectAllFieldsButton);
+    fieldsButtonLayout->addStretch();
+    fieldsLayout->addLayout(fieldsButtonLayout);
+    
     fieldXCheck_ = new QCheckBox("x", this);
     fieldYCheck_ = new QCheckBox("y", this);
     fieldZCheck_ = new QCheckBox("z", this);
@@ -99,7 +111,7 @@ void OutputPanel::setupUI() {
     
     modeGroup_->addButton(perEventRadio_, 0);
     modeGroup_->addButton(perStepRadio_, 1);
-    connect(modeGroup_, QOverload<int>::of(&QButtonGroup::buttonClicked),
+    connect(modeGroup_, QOverload<int>::of(&QButtonGroup::idClicked),
             this, &OutputPanel::onModeChanged);
     
     modeLayout->addWidget(perEventRadio_);
@@ -128,7 +140,19 @@ void OutputPanel::setupUI() {
     optionsLayout->addRow("", compressionCheck_);
     
     layout->addWidget(optionsGroup);
+    
+    // Preview
+    QGroupBox* previewGroup = new QGroupBox("Preview", this);
+    QVBoxLayout* previewLayout = new QVBoxLayout(previewGroup);
+    previewLabel_ = new QLabel(this);
+    previewLabel_->setWordWrap(true);
+    previewLabel_->setStyleSheet("padding: 8px; background-color: #252525; border-radius: 3px;");
+    previewLayout->addWidget(previewLabel_);
+    layout->addWidget(previewGroup);
+    
     layout->addStretch();
+    
+    updatePreview();
 }
 
 void OutputPanel::setConfig(const OutputConfig& config) {
@@ -180,11 +204,87 @@ OutputConfig OutputPanel::getConfig() const {
 }
 
 void OutputPanel::onCheckboxChanged() {
+    updatePreview();
     emit configChanged();
 }
 
 void OutputPanel::onSchemaChanged() {
+    updatePreview();
     emit configChanged();
+}
+
+void OutputPanel::onSelectAllFields() {
+    fieldXCheck_->setChecked(true);
+    fieldYCheck_->setChecked(true);
+    fieldZCheck_->setChecked(true);
+    fieldEdepCheck_->setChecked(true);
+    fieldEventIdCheck_->setChecked(true);
+    fieldTrackIdCheck_->setChecked(true);
+    fieldVolumeNameCheck_->setChecked(true);
+    fieldTimeCheck_->setChecked(true);
+    fieldKineticEnergyCheck_->setChecked(true);
+    updatePreview();
+    emit configChanged();
+}
+
+void OutputPanel::onDeselectAllFields() {
+    fieldXCheck_->setChecked(false);
+    fieldYCheck_->setChecked(false);
+    fieldZCheck_->setChecked(false);
+    fieldEdepCheck_->setChecked(false);
+    fieldEventIdCheck_->setChecked(false);
+    fieldTrackIdCheck_->setChecked(false);
+    fieldVolumeNameCheck_->setChecked(false);
+    fieldTimeCheck_->setChecked(false);
+    fieldKineticEnergyCheck_->setChecked(false);
+    updatePreview();
+    emit configChanged();
+}
+
+void OutputPanel::updatePreview() {
+    OutputConfig config = getConfig();
+    
+    QString preview;
+    
+    if (config.rootEnabled) {
+        preview += QString("Output: <b>%1</b><br>")
+                   .arg(QString::fromStdString(config.rootFilePath));
+    } else {
+        preview += "Output: <b>Disabled</b><br>";
+    }
+    
+    QString schemaName;
+    switch (config.schema) {
+        case OutputConfig::Schema::EventSummary:
+            schemaName = "Event Summary";
+            break;
+        case OutputConfig::Schema::StepHits:
+            schemaName = "Step Hits";
+            break;
+        case OutputConfig::Schema::Custom:
+            schemaName = "Custom";
+            break;
+    }
+    preview += QString("Schema: <b>%1</b><br>").arg(schemaName);
+    
+    QStringList fields;
+    if (config.fieldX) fields << "X";
+    if (config.fieldY) fields << "Y";
+    if (config.fieldZ) fields << "Z";
+    if (config.fieldEdep) fields << "Edep";
+    if (config.fieldEventId) fields << "EventID";
+    if (config.fieldTrackId) fields << "TrackID";
+    if (config.fieldVolumeName) fields << "Volume";
+    if (config.fieldTime) fields << "Time";
+    if (config.fieldKineticEnergy) fields << "KE";
+    
+    if (fields.isEmpty()) {
+        preview += "Fields: None";
+    } else {
+        preview += "Fields: " + fields.join(", ");
+    }
+    
+    previewLabel_->setText(preview);
 }
 
 void OutputPanel::onBrowseFile() {

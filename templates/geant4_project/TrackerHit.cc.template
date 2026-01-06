@@ -1,0 +1,83 @@
+#include "TrackerHit.hh"
+#include <G4UnitsTable.hh>
+#include <G4VVisManager.hh>
+#include <G4Circle.hh>
+#include <G4Colour.hh>
+#include <G4VisAttributes.hh>
+
+G4ThreadLocal G4Allocator<TrackerHit>* TrackerHitAllocator = nullptr;
+
+TrackerHit::TrackerHit()
+    : trackID_(-1), parentID_(-1), kineticEnergy_(0.), time_(0.), 
+      stepLength_(0.), edep_(0.), copyNumber_(-1)
+{
+}
+
+TrackerHit::~TrackerHit() {
+}
+
+TrackerHit::TrackerHit(const TrackerHit& right)
+    : G4VHit(right)
+{
+    trackID_ = right.trackID_;
+    parentID_ = right.parentID_;
+    particleName_ = right.particleName_;
+    pos_ = right.pos_;
+    mom_ = right.mom_;
+    kineticEnergy_ = right.kineticEnergy_;
+    time_ = right.time_;
+    stepLength_ = right.stepLength_;
+    edep_ = right.edep_;
+    volumeName_ = right.volumeName_;
+    copyNumber_ = right.copyNumber_;
+}
+
+const TrackerHit& TrackerHit::operator=(const TrackerHit& right) {
+    if (this != &right) {
+        trackID_ = right.trackID_;
+        parentID_ = right.parentID_;
+        particleName_ = right.particleName_;
+        pos_ = right.pos_;
+        mom_ = right.mom_;
+        kineticEnergy_ = right.kineticEnergy_;
+        time_ = right.time_;
+        stepLength_ = right.stepLength_;
+        edep_ = right.edep_;
+        volumeName_ = right.volumeName_;
+        copyNumber_ = right.copyNumber_;
+    }
+    return *this;
+}
+
+G4int TrackerHit::operator==(const TrackerHit& right) const {
+    return (this == &right) ? 1 : 0;
+}
+
+void TrackerHit::Draw() {
+    G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
+    if (pVVisManager) {
+        G4Circle circle(pos_);
+        circle.SetScreenSize(2.);
+        circle.SetFillStyle(G4Circle::filled);
+        G4Colour colour(0., 1., 0.);
+        G4VisAttributes attribs(colour);
+        circle.SetVisAttributes(attribs);
+        pVVisManager->Draw(circle);
+    }
+}
+
+void TrackerHit::Print() {
+    G4cout << "TrackerHit: trackID=" << trackID_
+           << " parentID=" << parentID_
+           << " particle=" << particleName_
+           << " pos=" << G4BestUnit(pos_, "Length")
+           << " mom=" << G4BestUnit(mom_.mag(), "Energy")
+           << " KE=" << G4BestUnit(kineticEnergy_, "Energy")
+           << " time=" << G4BestUnit(time_, "Time")
+           << " stepLen=" << G4BestUnit(stepLength_, "Length")
+           << " edep=" << G4BestUnit(edep_, "Energy")
+           << " volume=" << volumeName_
+           << " copyNo=" << copyNumber_
+           << G4endl;
+}
+

@@ -94,13 +94,69 @@ void OutputConfig::fromJson(const nlohmann::json& j) {
 }
 
 std::string OutputConfig::generateOutputCode() const {
-    // This will be used by Geant4ProjectGenerator to generate output code
-    // For now, return a placeholder
     std::ostringstream oss;
-    oss << "// Output configuration:\n";
-    oss << "// Schema: " << getSchemaName() << "\n";
-    oss << "// ROOT enabled: " << (rootEnabled ? "yes" : "no") << "\n";
-    oss << "// File: " << rootFilePath << "\n";
+    
+    oss << "    // Output configuration:\n";
+    oss << "    // Schema: " << getSchemaName() << "\n";
+    oss << "    // ROOT enabled: " << (rootEnabled ? "yes" : "no") << "\n";
+    oss << "    // File: " << rootFilePath << "\n";
+    
+    if (rootEnabled) {
+        oss << "    // ROOT output initialization would go here\n";
+        oss << "    // Example: TFile* file = new TFile(\"" << rootFilePath << "\", \"RECREATE\");\n";
+        oss << "    // Example: TTree* tree = new TTree(\"events\", \"Event data\");\n";
+    }
+    
+    return oss.str();
+}
+
+std::string OutputConfig::generateEventActionCode() const {
+    std::ostringstream oss;
+    
+    oss << "    // Collect hit collections\n";
+    oss << "    G4HCofThisEvent* hce = event->GetHCofThisEvent();\n";
+    oss << "    if (!hce) return;\n\n";
+    
+    // Generate code to access hit collections based on schema
+    if (schema == Schema::EventSummary) {
+        oss << "    // Event summary mode: aggregate data per event\n";
+        oss << "    // ==== USER CODE BEGIN EventSummary\n";
+        oss << "    // Collect hits from all collections and aggregate\n";
+        oss << "    // ==== USER CODE END EventSummary\n";
+    } else if (schema == Schema::StepHits) {
+        oss << "    // Step hits mode: save each step\n";
+        oss << "    // ==== USER CODE BEGIN StepHits\n";
+        oss << "    // Iterate through all hit collections and save steps\n";
+        oss << "    // ==== USER CODE END StepHits\n";
+    }
+    
+    if (rootEnabled) {
+        oss << "\n    // Save to ROOT file\n";
+        oss << "    // ==== USER CODE BEGIN ROOTOutput\n";
+        oss << "    // tree->Fill(); // Fill ROOT tree\n";
+        oss << "    // ==== USER CODE END ROOTOutput\n";
+    }
+    
+    return oss.str();
+}
+
+std::string OutputConfig::generateRunActionCode() const {
+    std::ostringstream oss;
+    
+    oss << "    // Output file setup\n";
+    if (rootEnabled) {
+        oss << "    // ROOT file: " << rootFilePath << "\n";
+        oss << "    // ==== USER CODE BEGIN ROOTSetup\n";
+        oss << "    // TFile* file = new TFile(\"" << rootFilePath << "\", \"RECREATE\");\n";
+        oss << "    // TTree* tree = new TTree(\"events\", \"Event data\");\n";
+        oss << "    // ==== USER CODE END ROOTSetup\n";
+    } else {
+        oss << "    // CSV output: " << rootFilePath << "\n";
+        oss << "    // ==== USER CODE BEGIN CSVSetup\n";
+        oss << "    // std::ofstream csvFile(\"" << rootFilePath << "\");\n";
+        oss << "    // ==== USER CODE END CSVSetup\n";
+    }
+    
     return oss.str();
 }
 

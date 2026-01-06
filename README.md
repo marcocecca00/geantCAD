@@ -26,7 +26,7 @@ Il progetto è organizzato in 4 layer separati:
 ## Scelte tecnologiche
 
 - **Linguaggio**: C++17
-- **GUI**: Qt 5
+- **GUI**: Qt 6
 - **Viewport 3D**: VTK + Qt (scelta per robustezza picking/interaction CAD-grade)
 - **Build**: CMake 3.20+
 - **Target Geant4**: 11.x
@@ -34,7 +34,7 @@ Il progetto è organizzato in 4 layer separati:
 
 ## Dipendenze
 
-- Qt 5 (Core, Widgets, OpenGL, Gui)
+- Qt 5 (Core, Widgets, OpenGL, Gui) - Qt6 supportabile con VTK ricompilato
 - VTK 9+ (per viewport 3D, opzionale)
 - nlohmann_json (per serializzazione)
 - Geant4 11.x (per progetti generati)

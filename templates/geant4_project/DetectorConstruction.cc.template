@@ -34,6 +34,7 @@ void DetectorConstruction::SetupSensitiveDetectors() {
     // Auto-generated sensitive detector setup
     // This section is regenerated on each project generation
     // ==== USER CODE BEGIN SetupSensitiveDetectors
+{{sensitive_detector_setup}}
     // ==== USER CODE END SetupSensitiveDetectors
 }
 

@@ -10,6 +10,7 @@
 #include <QButtonGroup>
 #include <QVBoxLayout>
 #include <QGroupBox>
+#include <QLabel>
 #include "../../core/include/OutputConfig.hh"
 
 namespace geantcad {
@@ -32,9 +33,12 @@ private slots:
     void onSchemaChanged();
     void onBrowseFile();
     void onModeChanged();
+    void onSelectAllFields();
+    void onDeselectAllFields();
 
 private:
     void setupUI();
+    void updatePreview();
     
     // ROOT output
     QCheckBox* rootEnabledCheck_;
@@ -65,6 +69,9 @@ private:
     QSpinBox* saveFrequencySpin_;
     QCheckBox* csvFallbackCheck_;
     QCheckBox* compressionCheck_;
+    
+    // Preview
+    QLabel* previewLabel_;
 };
 
 } // namespace geantcad

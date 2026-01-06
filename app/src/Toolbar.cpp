@@ -12,14 +12,16 @@ Toolbar::Toolbar(QWidget* parent)
 }
 
 void Toolbar::setupActions() {
-    // Tool actions (mutually exclusive)
+    // === CATEGORY: Tools (Manipulation) ===
+    // Tool actions (mutually exclusive) - these are checkable and show active state
     QActionGroup* toolGroup = new QActionGroup(this);
+    toolGroup->setExclusive(true); // Only one tool active at a time
     
     // Select tool - use arrow icon
     QAction* selectAction = addAction(style()->standardIcon(QStyle::SP_ArrowUp), "Select");
     connect(selectAction, &QAction::triggered, this, &Toolbar::toolSelect);
     selectAction->setCheckable(true);
-    selectAction->setChecked(true);
+    selectAction->setChecked(true); // Default active tool
     selectAction->setToolTip("Select tool (S)");
     toolGroup->addAction(selectAction);
     
@@ -46,29 +48,18 @@ void Toolbar::setupActions() {
     
     addSeparator();
     
-    // Main primitives - use more appropriate icons
-    QAction* boxAction = addAction(style()->standardIcon(QStyle::SP_FileDialogListView), "Box");
-    connect(boxAction, &QAction::triggered, this, &Toolbar::createBox);
-    boxAction->setToolTip("Create Box");
+    // Primitives moved to Insert -> Shape menu
+    // Toolbar now only contains manipulation tools
     
-    QAction* tubeAction = addAction(style()->standardIcon(QStyle::SP_DirIcon), "Tube");
-    connect(tubeAction, &QAction::triggered, this, &Toolbar::createTube);
-    tubeAction->setToolTip("Create Tube");
-    
-    QAction* sphereAction = addAction(style()->standardIcon(QStyle::SP_ComputerIcon), "Sphere");
-    connect(sphereAction, &QAction::triggered, this, &Toolbar::createSphere);
-    sphereAction->setToolTip("Create Sphere");
-    
-    addSeparator();
-    
+    // === CATEGORY: Edit (Modify) ===
     // Edit actions - use standard icons
-    QAction* deleteAction = addAction(style()->standardIcon(QStyle::SP_TrashIcon), "Delete");
-    connect(deleteAction, &QAction::triggered, this, &Toolbar::deleteSelected);
-    deleteAction->setToolTip("Delete selected");
-    
     QAction* duplicateAction = addAction(style()->standardIcon(QStyle::SP_FileDialogNewFolder), "Duplicate");
     connect(duplicateAction, &QAction::triggered, this, &Toolbar::duplicateSelected);
     duplicateAction->setToolTip("Duplicate selected");
+    
+    QAction* deleteAction = addAction(style()->standardIcon(QStyle::SP_TrashIcon), "Delete");
+    connect(deleteAction, &QAction::triggered, this, &Toolbar::deleteSelected);
+    deleteAction->setToolTip("Delete selected");
 }
 
 } // namespace geantcad

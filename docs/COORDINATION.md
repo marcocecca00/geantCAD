@@ -2,7 +2,7 @@
 
 ## Overview
 
-Linee guida per lo sviluppo di GeantCAD.
+Linee guida per lo sviluppo di GeantCAD. Per la divisione dettagliata del lavoro, vedere `docs/AGENT_TASKS.md`.
 
 ## Convenzioni
 

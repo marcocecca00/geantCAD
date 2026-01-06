@@ -27,6 +27,7 @@ private:
     std::string readExistingFile(const std::string& filePath);
     bool createDirectoryStructure(const std::string& outputDir);
     std::string generatePhysicsConstructors(); // Default physics for now
+    std::string generateSensitiveDetectorSetup(SceneGraph* sceneGraph);
     std::map<std::string, std::string> prepareTemplateVariables(const std::string& projectName);
 };
 

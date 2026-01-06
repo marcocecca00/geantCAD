@@ -58,6 +58,8 @@ public:
     
     // Generate output code for Geant4
     std::string generateOutputCode() const;
+    std::string generateEventActionCode() const;
+    std::string generateRunActionCode() const;
     
     // Helper: get schema name
     std::string getSchemaName() const;

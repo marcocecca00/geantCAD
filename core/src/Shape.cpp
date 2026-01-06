@@ -61,6 +61,29 @@ nlohmann::json Shape::toJson() const {
             }
             break;
         }
+        case ShapeType::Polycone: {
+            if (auto* p = std::get_if<PolyconeParams>(&params_)) {
+                j["params"] = {
+                    {"sphi", p->sphi}, {"dphi", p->dphi},
+                    {"zPlanes", p->zPlanes},
+                    {"rmin", p->rmin},
+                    {"rmax", p->rmax}
+                };
+            }
+            break;
+        }
+        case ShapeType::Polyhedra: {
+            if (auto* p = std::get_if<PolyhedraParams>(&params_)) {
+                j["params"] = {
+                    {"numSides", p->numSides},
+                    {"sphi", p->sphi}, {"dphi", p->dphi},
+                    {"zPlanes", p->zPlanes},
+                    {"rmin", p->rmin},
+                    {"rmax", p->rmax}
+                };
+            }
+            break;
+        }
         default:
             break;
     }
@@ -100,6 +123,27 @@ std::unique_ptr<Shape> Shape::fromJson(const nlohmann::json& j) {
         case ShapeType::Trd: {
             auto p = j["params"];
             return makeTrd(p["dx1"], p["dx2"], p["dy1"], p["dy2"], p["dz"]);
+        }
+        case ShapeType::Polycone: {
+            auto p = j["params"];
+            return makePolycone(
+                p.value("sphi", 0.0),
+                p.value("dphi", 360.0),
+                p["zPlanes"].get<std::vector<double>>(),
+                p["rmin"].get<std::vector<double>>(),
+                p["rmax"].get<std::vector<double>>()
+            );
+        }
+        case ShapeType::Polyhedra: {
+            auto p = j["params"];
+            return makePolyhedra(
+                p.value("numSides", 6),
+                p.value("sphi", 0.0),
+                p.value("dphi", 360.0),
+                p["zPlanes"].get<std::vector<double>>(),
+                p["rmin"].get<std::vector<double>>(),
+                p["rmax"].get<std::vector<double>>()
+            );
         }
         default:
             throw std::runtime_error("Unsupported shape type in JSON");
@@ -156,6 +200,44 @@ std::unique_ptr<Shape> makeTrd(double dx1, double dx2, double dy1, double dy2, d
     params.dy2 = dy2;
     params.dz = dz;
     return std::unique_ptr<Shape>(new Shape(ShapeType::Trd, "Trd", params));
+}
+
+std::unique_ptr<Shape> makePolycone(double sphi, double dphi, const std::vector<double>& zPlanes, const std::vector<double>& rmin, const std::vector<double>& rmax) {
+    if (zPlanes.size() != rmin.size() || zPlanes.size() != rmax.size()) {
+        throw std::runtime_error("Polycone: zPlanes, rmin, and rmax must have the same size");
+    }
+    if (zPlanes.size() < 2) {
+        throw std::runtime_error("Polycone: at least 2 z planes required");
+    }
+    
+    PolyconeParams params;
+    params.sphi = sphi;
+    params.dphi = dphi;
+    params.zPlanes = zPlanes;
+    params.rmin = rmin;
+    params.rmax = rmax;
+    return std::unique_ptr<Shape>(new Shape(ShapeType::Polycone, "Polycone", params));
+}
+
+std::unique_ptr<Shape> makePolyhedra(int numSides, double sphi, double dphi, const std::vector<double>& zPlanes, const std::vector<double>& rmin, const std::vector<double>& rmax) {
+    if (numSides < 3) {
+        throw std::runtime_error("Polyhedra: numSides must be at least 3");
+    }
+    if (zPlanes.size() != rmin.size() || zPlanes.size() != rmax.size()) {
+        throw std::runtime_error("Polyhedra: zPlanes, rmin, and rmax must have the same size");
+    }
+    if (zPlanes.size() < 2) {
+        throw std::runtime_error("Polyhedra: at least 2 z planes required");
+    }
+    
+    PolyhedraParams params;
+    params.numSides = numSides;
+    params.sphi = sphi;
+    params.dphi = dphi;
+    params.zPlanes = zPlanes;
+    params.rmin = rmin;
+    params.rmax = rmax;
+    return std::unique_ptr<Shape>(new Shape(ShapeType::Polyhedra, "Polyhedra", params));
 }
 
 } // namespace geantcad

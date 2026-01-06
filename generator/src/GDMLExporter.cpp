@@ -128,6 +128,51 @@ namespace {
                 }
                 break;
             }
+            case ShapeType::Polycone: {
+                if (auto* params = shape->getParamsAs<PolyconeParams>()) {
+                    os << "    <polycone name=\"" << shapeName << "\" "
+                       << "startphi=\"" << formatDouble(params->sphi) << "\" "
+                       << "deltaphi=\"" << formatDouble(params->dphi) << "\" "
+                       << "aunit=\"deg\" lunit=\"cm\">\n";
+                    
+                    // Write zplanes
+                    os << "      <zplane z=\"" << formatDouble(mmToCm(params->zPlanes[0])) << "\" "
+                       << "rmin=\"" << formatDouble(mmToCm(params->rmin[0])) << "\" "
+                       << "rmax=\"" << formatDouble(mmToCm(params->rmax[0])) << "\"/>\n";
+                    
+                    for (size_t i = 1; i < params->zPlanes.size(); ++i) {
+                        os << "      <zplane z=\"" << formatDouble(mmToCm(params->zPlanes[i])) << "\" "
+                           << "rmin=\"" << formatDouble(mmToCm(params->rmin[i])) << "\" "
+                           << "rmax=\"" << formatDouble(mmToCm(params->rmax[i])) << "\"/>\n";
+                    }
+                    
+                    os << "    </polycone>\n";
+                }
+                break;
+            }
+            case ShapeType::Polyhedra: {
+                if (auto* params = shape->getParamsAs<PolyhedraParams>()) {
+                    os << "    <polyhedra name=\"" << shapeName << "\" "
+                       << "numsides=\"" << params->numSides << "\" "
+                       << "startphi=\"" << formatDouble(params->sphi) << "\" "
+                       << "deltaphi=\"" << formatDouble(params->dphi) << "\" "
+                       << "aunit=\"deg\" lunit=\"cm\">\n";
+                    
+                    // Write zplanes
+                    os << "      <zplane z=\"" << formatDouble(mmToCm(params->zPlanes[0])) << "\" "
+                       << "rmin=\"" << formatDouble(mmToCm(params->rmin[0])) << "\" "
+                       << "rmax=\"" << formatDouble(mmToCm(params->rmax[0])) << "\"/>\n";
+                    
+                    for (size_t i = 1; i < params->zPlanes.size(); ++i) {
+                        os << "      <zplane z=\"" << formatDouble(mmToCm(params->zPlanes[i])) << "\" "
+                           << "rmin=\"" << formatDouble(mmToCm(params->rmin[i])) << "\" "
+                           << "rmax=\"" << formatDouble(mmToCm(params->rmax[i])) << "\"/>\n";
+                    }
+                    
+                    os << "    </polyhedra>\n";
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -144,6 +189,21 @@ namespace {
         
         // Default to AIR if no NIST name
         return "G4_AIR";
+    }
+    
+    // Write optical surface definition
+    void writeOpticalSurface(std::ostream& os, const OpticalSurfaceConfig& config, const std::string& name) {
+        std::string surfName = sanitizeName(name) + "_optical_surface";
+        
+        os << "  <opticalsurface name=\"" << surfName << "\" ";
+        os << "model=\"" << config.model << "\" ";
+        os << "finish=\"" << config.finish << "\" ";
+        os << "type=\"dielectric_metal\" ";
+        os << "value=\"" << formatDouble(config.reflectivity) << "\"";
+        if (config.sigmaAlpha > 0.0) {
+            os << " sigmaalpha=\"" << formatDouble(config.sigmaAlpha) << "\"";
+        }
+        os << "/>\n";
     }
     
     // Recursive volume export
@@ -190,6 +250,28 @@ namespace {
             exportVolume(os, child, indent + 1);
         }
     }
+    
+    // Export optical surfaces (called after volumes)
+    void exportOpticalSurfaces(std::ostream& os, VolumeNode* node) {
+        if (!node) return;
+        
+        const auto& opticalConfig = node->getOpticalConfig();
+        if (opticalConfig.enabled) {
+            std::string volName = sanitizeName(node->getName());
+            std::string surfName = volName + "_optical_surface";
+            
+            // Write optical surface definition (in <define> section)
+            writeOpticalSurface(os, opticalConfig, volName);
+            
+            // Write skin surface (in <setup> section, will be handled separately)
+            // For now, we'll add it to a list to write later
+        }
+        
+        // Recursively process children
+        for (auto* child : node->getChildren()) {
+            exportOpticalSurfaces(os, child);
+        }
+    }
 }
 
 bool GDMLExporter::exportToFile(SceneGraph* sceneGraph, const std::string& filePath) {
@@ -209,6 +291,21 @@ bool GDMLExporter::exportToFile(SceneGraph* sceneGraph, const std::string& fileP
         file << "<define>\n";
         file << "  <position name=\"world_pos\" unit=\"cm\" x=\"0\" y=\"0\" z=\"0\"/>\n";
         
+        // Export optical surface definitions
+        VolumeNode* root = sceneGraph->getRoot();
+        if (root) {
+            std::function<void(VolumeNode*)> writeOpticalSurfaces = [&](VolumeNode* node) {
+                const auto& opticalConfig = node->getOpticalConfig();
+                if (opticalConfig.enabled) {
+                    writeOpticalSurface(file, opticalConfig, sanitizeName(node->getName()));
+                }
+                for (auto* child : node->getChildren()) {
+                    writeOpticalSurfaces(child);
+                }
+            };
+            writeOpticalSurfaces(root);
+        }
+        
         file << "<solids>\n";
         // Shapes will be written by exportVolume
         file << "</solids>\n";
@@ -216,7 +313,8 @@ bool GDMLExporter::exportToFile(SceneGraph* sceneGraph, const std::string& fileP
         file << "<structure>\n";
         
         // Export volumes (starting from root's children, not root itself)
-        VolumeNode* root = sceneGraph->getRoot();
+        // Reuse root variable from above
+        root = sceneGraph->getRoot();
         if (root) {
             // Write shapes first
             file << "<solids>\n";
@@ -262,8 +360,30 @@ bool GDMLExporter::exportToFile(SceneGraph* sceneGraph, const std::string& fileP
         }
         
         file << "</structure>\n";
+        
+        // Write setup section with skin surfaces
         file << "<setup name=\"Default\" version=\"1.0\">\n";
         file << "  <world ref=\"world\"/>\n";
+        
+        // Export skin surfaces for volumes with optical surfaces
+        if (root) {
+            std::function<void(VolumeNode*)> writeSkinSurfaces = [&](VolumeNode* node) {
+                const auto& opticalConfig = node->getOpticalConfig();
+                if (opticalConfig.enabled) {
+                    std::string volName = sanitizeName(node->getName());
+                    std::string surfName = volName + "_optical_surface";
+                    file << "  <skinsurface name=\"" << volName << "_skin\" surface=\"" 
+                         << surfName << "\">\n";
+                    file << "    <volumeref ref=\"" << volName << "\"/>\n";
+                    file << "  </skinsurface>\n";
+                }
+                for (auto* child : node->getChildren()) {
+                    writeSkinSurfaces(child);
+                }
+            };
+            writeSkinSurfaces(root);
+        }
+        
         file << "</setup>\n";
         file << "</gdml>\n";
         

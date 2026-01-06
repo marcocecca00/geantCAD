@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     
-    // Register VolumeNode* type for Qt5 QVariant support
+    // Register VolumeNode* type for Qt6 QVariant support
     qRegisterMetaType<VolumeNode*>("VolumeNode*");
     
     app.setApplicationName("GeantCAD");

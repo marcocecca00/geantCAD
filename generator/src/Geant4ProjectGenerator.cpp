@@ -1,11 +1,13 @@
 #include "Geant4ProjectGenerator.hh"
 #include "GDMLExporter.hh"
 #include "../../core/include/PhysicsConfig.hh"
+#include "../../core/include/ParticleGunConfig.hh"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
 #include <ctime>
 #include <iomanip>
+#include <set>
 
 namespace geantcad {
 
@@ -88,6 +90,85 @@ std::string Geant4ProjectGenerator::generatePhysicsConstructors() {
     return defaultConfig.generatePhysicsCode();
 }
 
+std::string Geant4ProjectGenerator::generateSensitiveDetectorSetup(SceneGraph* sceneGraph) {
+    if (!sceneGraph) return "";
+    
+    std::ostringstream oss;
+    oss << "    // Auto-generated sensitive detector setup\n";
+    oss << "    G4SDManager* sdManager = G4SDManager::GetSDMpointer();\n\n";
+    
+    // Collect all volumes with SD enabled
+    std::map<std::string, std::vector<std::pair<std::string, std::string>>> sdByType;
+    
+    sceneGraph->traverseConst([&](const VolumeNode* node) {
+        if (node && node->getSDConfig().enabled) {
+            const auto& sdConfig = node->getSDConfig();
+            std::string type = sdConfig.type;
+            std::string volumeName = node->getName();
+            std::string collectionName = sdConfig.collectionName.empty() 
+                ? volumeName + "HitsCollection" 
+                : sdConfig.collectionName;
+            
+            sdByType[type].push_back({volumeName, collectionName});
+        }
+    });
+    
+    // Generate SD instances and registration
+    for (const auto& typePair : sdByType) {
+        const std::string& type = typePair.first;
+        const auto& volumes = typePair.second;
+        
+        if (type == "calorimeter") {
+            for (const auto& volPair : volumes) {
+                const std::string& volName = volPair.first;
+                const std::string& collName = volPair.second;
+                
+                oss << "    // Calorimeter SD for " << volName << "\n";
+                oss << "    CalorimeterSD* " << volName << "_SD = new CalorimeterSD(\"" 
+                    << volName << "_SD\", \"" << collName << "\");\n";
+                oss << "    sdManager->AddNewDetector(" << volName << "_SD);\n";
+                oss << "    G4LogicalVolume* " << volName << "_LV = G4LogicalVolumeStore::GetInstance()->GetVolume(\"" 
+                    << volName << "\", false);\n";
+                oss << "    if (" << volName << "_LV) {\n";
+                oss << "        " << volName << "_LV->SetSensitiveDetector(" << volName << "_SD);\n";
+                oss << "    }\n\n";
+            }
+        } else if (type == "tracker") {
+            for (const auto& volPair : volumes) {
+                const std::string& volName = volPair.first;
+                const std::string& collName = volPair.second;
+                
+                oss << "    // Tracker SD for " << volName << "\n";
+                oss << "    TrackerSD* " << volName << "_SD = new TrackerSD(\"" 
+                    << volName << "_SD\", \"" << collName << "\");\n";
+                oss << "    sdManager->AddNewDetector(" << volName << "_SD);\n";
+                oss << "    G4LogicalVolume* " << volName << "_LV = G4LogicalVolumeStore::GetInstance()->GetVolume(\"" 
+                    << volName << "\", false);\n";
+                oss << "    if (" << volName << "_LV) {\n";
+                oss << "        " << volName << "_LV->SetSensitiveDetector(" << volName << "_SD);\n";
+                oss << "    }\n\n";
+            }
+        } else if (type == "optical") {
+            for (const auto& volPair : volumes) {
+                const std::string& volName = volPair.first;
+                const std::string& collName = volPair.second;
+                
+                oss << "    // Optical SD for " << volName << "\n";
+                oss << "    OpticalSD* " << volName << "_SD = new OpticalSD(\"" 
+                    << volName << "_SD\", \"" << collName << "\");\n";
+                oss << "    sdManager->AddNewDetector(" << volName << "_SD);\n";
+                oss << "    G4LogicalVolume* " << volName << "_LV = G4LogicalVolumeStore::GetInstance()->GetVolume(\"" 
+                    << volName << "\", false);\n";
+                oss << "    if (" << volName << "_LV) {\n";
+                oss << "        " << volName << "_LV->SetSensitiveDetector(" << volName << "_SD);\n";
+                oss << "    }\n\n";
+            }
+        }
+    }
+    
+    return oss.str();
+}
+
 std::map<std::string, std::string> Geant4ProjectGenerator::prepareTemplateVariables(const std::string& projectName) {
     std::map<std::string, std::string> vars;
     vars["project_name"] = projectName;
@@ -128,6 +209,14 @@ bool Geant4ProjectGenerator::generateProject(SceneGraph* sceneGraph, const std::
     // Use particle gun config from scene graph
     vars["particle_gun_commands"] = sceneGraph->getParticleGunConfig().generateMacroCommands();
     
+    // Generate sensitive detector setup code
+    vars["sensitive_detector_setup"] = generateSensitiveDetectorSetup(sceneGraph);
+    
+    // Generate output configuration code
+    vars["output_config"] = sceneGraph->getOutputConfig().generateOutputCode();
+    vars["event_action_output"] = sceneGraph->getOutputConfig().generateEventActionCode();
+    vars["run_action_output"] = sceneGraph->getOutputConfig().generateRunActionCode();
+    
     // Find template directory (try relative to current working directory first)
     std::string templateBase = templateDir_;
     if (!fs::exists(templateBase)) {
@@ -148,6 +237,132 @@ bool Geant4ProjectGenerator::generateProject(SceneGraph* sceneGraph, const std::
         std::string rendered = templateEngine_.render(templateContent, vars);
         if (!writeGeneratedFile(outputDir + "/CMakeLists.txt", rendered, true)) {
             return false;
+        }
+    }
+    
+    // Generate Sensitive Detector files if needed
+    std::set<std::string> sdTypes;
+    sceneGraph->traverseConst([&](const VolumeNode* node) {
+        if (node && node->getSDConfig().enabled) {
+            sdTypes.insert(node->getSDConfig().type);
+        }
+    });
+    
+    // Generate SD files based on types used
+    if (sdTypes.find("calorimeter") != sdTypes.end()) {
+        std::vector<std::pair<std::string, std::string>> files = {
+            {"CalorimeterHit.cc", "CalorimeterHit.cc.template"},
+            {"CalorimeterHit.hh", "CalorimeterHit.hh.template"},
+            {"CalorimeterSD.cc", "CalorimeterSD.cc.template"},
+            {"CalorimeterSD.hh", "CalorimeterSD.hh.template"}
+        };
+        for (const auto& pair : files) {
+            std::string templatePath = templateBase + "/" + pair.second;
+            std::string templateContent = readTemplateFile(templatePath);
+            if (!templateContent.empty()) {
+                std::string rendered = templateEngine_.render(templateContent, vars);
+                std::string filePath = outputDir + "/src/" + pair.first;
+                if (pair.first.find(".hh") != std::string::npos) {
+                    filePath = outputDir + "/include/" + pair.first;
+                }
+                writeGeneratedFile(filePath, rendered, false);
+            }
+        }
+    }
+    
+    if (sdTypes.find("tracker") != sdTypes.end()) {
+        std::vector<std::pair<std::string, std::string>> files = {
+            {"TrackerHit.cc", "TrackerHit.cc.template"},
+            {"TrackerHit.hh", "TrackerHit.hh.template"},
+            {"TrackerSD.cc", "TrackerSD.cc.template"},
+            {"TrackerSD.hh", "TrackerSD.hh.template"}
+        };
+        for (const auto& pair : files) {
+            std::string templatePath = templateBase + "/" + pair.second;
+            std::string templateContent = readTemplateFile(templatePath);
+            if (!templateContent.empty()) {
+                std::string rendered = templateEngine_.render(templateContent, vars);
+                std::string filePath = outputDir + "/src/" + pair.first;
+                if (pair.first.find(".hh") != std::string::npos) {
+                    filePath = outputDir + "/include/" + pair.first;
+                }
+                writeGeneratedFile(filePath, rendered, false);
+            }
+        }
+    }
+    
+    if (sdTypes.find("optical") != sdTypes.end()) {
+        std::vector<std::pair<std::string, std::string>> files = {
+            {"OpticalHit.cc", "OpticalHit.cc.template"},
+            {"OpticalHit.hh", "OpticalHit.hh.template"},
+            {"OpticalSD.cc", "OpticalSD.cc.template"},
+            {"OpticalSD.hh", "OpticalSD.hh.template"}
+        };
+        for (const auto& pair : files) {
+            std::string templatePath = templateBase + "/" + pair.second;
+            std::string templateContent = readTemplateFile(templatePath);
+            if (!templateContent.empty()) {
+                std::string rendered = templateEngine_.render(templateContent, vars);
+                std::string filePath = outputDir + "/src/" + pair.first;
+                if (pair.first.find(".hh") != std::string::npos) {
+                    filePath = outputDir + "/include/" + pair.first;
+                }
+                writeGeneratedFile(filePath, rendered, false);
+            }
+        }
+    }
+    
+    // Generate PrimaryGeneratorAction files (always generated)
+    {
+        std::vector<std::pair<std::string, std::string>> pgaFiles = {
+            {"PrimaryGeneratorAction.cc", "PrimaryGeneratorAction.cc.template"},
+            {"PrimaryGeneratorAction.hh", "PrimaryGeneratorAction.hh.template"}
+        };
+        for (const auto& pair : pgaFiles) {
+            std::string templatePath = templateBase + "/" + pair.second;
+            std::string templateContent = readTemplateFile(templatePath);
+            if (!templateContent.empty()) {
+                // Generate configuration code for PrimaryGeneratorAction
+                std::ostringstream pgaConfig;
+                const auto& pgConfig = sceneGraph->getParticleGunConfig();
+                
+                pgaConfig << "    // Configure PrimaryGeneratorAction\n";
+                pgaConfig << "    PrimaryGeneratorAction* pga = dynamic_cast<PrimaryGeneratorAction*>(GetPrimaryGenerator());\n";
+                pgaConfig << "    if (pga) {\n";
+                pgaConfig << "        pga->SetParticleType(\"" << pgConfig.particleType << "\");\n";
+                pgaConfig << "        pga->SetEnergyMode(" << static_cast<int>(pgConfig.energyMode) << ");\n";
+                if (pgConfig.energyMode == ParticleGunConfig::EnergyMode::Mono) {
+                    pgaConfig << "        pga->SetEnergy(" << pgConfig.energy << "*MeV);\n";
+                } else if (pgConfig.energyMode == ParticleGunConfig::EnergyMode::Uniform) {
+                    pgaConfig << "        pga->SetEnergyRange(" << pgConfig.energyMin << "*MeV, " << pgConfig.energyMax << "*MeV);\n";
+                } else if (pgConfig.energyMode == ParticleGunConfig::EnergyMode::Gaussian) {
+                    pgaConfig << "        pga->SetEnergyGaussian(" << pgConfig.energyMean << "*MeV, " << pgConfig.energySigma << "*MeV);\n";
+                }
+                pgaConfig << "        pga->SetPositionMode(" << static_cast<int>(pgConfig.positionMode) << ");\n";
+                pgaConfig << "        pga->SetPosition(" << pgConfig.positionX << "*mm, " << pgConfig.positionY << "*mm, " << pgConfig.positionZ << "*mm);\n";
+                if (!pgConfig.positionVolume.empty()) {
+                    pgaConfig << "        pga->SetPositionVolume(\"" << pgConfig.positionVolume << "\");\n";
+                }
+                pgaConfig << "        pga->SetPositionRadius(" << pgConfig.positionRadius << "*mm);\n";
+                pgaConfig << "        pga->SetDirectionMode(" << static_cast<int>(pgConfig.directionMode) << ");\n";
+                pgaConfig << "        pga->SetDirection(" << pgConfig.directionX << ", " << pgConfig.directionY << ", " << pgConfig.directionZ << ");\n";
+                pgaConfig << "        pga->SetConeAngle(" << pgConfig.coneAngle << "*degree);\n";
+                pgaConfig << "        pga->SetNumberOfParticles(" << pgConfig.numberOfParticles << ");\n";
+                pgaConfig << "    }\n";
+                
+                vars["primary_generator_config"] = pgaConfig.str();
+                
+                std::string rendered = templateEngine_.render(templateContent, vars);
+                std::string filePath = outputDir + "/src/" + pair.first;
+                if (pair.first.find(".hh") != std::string::npos) {
+                    filePath = outputDir + "/include/" + pair.first;
+                }
+                std::string existingContent = readExistingFile(filePath);
+                if (!existingContent.empty()) {
+                    rendered = templateEngine_.renderWithPreservation(rendered, vars, existingContent);
+                }
+                writeGeneratedFile(filePath, rendered, false);
+            }
         }
     }
     

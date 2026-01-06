@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QVBoxLayout>
 #include <QGroupBox>
+#include <QLabel>
 #include "../../core/include/PhysicsConfig.hh"
 
 namespace geantcad {
@@ -28,12 +29,14 @@ private slots:
 
 private:
     void setupUI();
+    void updatePreview();
     
     QCheckBox* emCheckbox_;
     QCheckBox* decayCheckbox_;
     QCheckBox* opticalCheckbox_;
     QCheckBox* hadronicCheckbox_;
     QComboBox* standardListCombo_;
+    QLabel* previewLabel_;
 };
 
 } // namespace geantcad

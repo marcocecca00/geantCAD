@@ -70,8 +70,10 @@ Viewport3D::Viewport3D(QWidget* parent)
     , interactionMode_(InteractionMode::Select)
     , gridVisible_(true)
     , gridSpacing_(50.0)
+    , snapToGrid_(false)
     , manipulatedNode_(nullptr)
     , isManipulating_(false)
+    , isPicking_(false)
 {
     setupRenderer();
     setupInteractor();
@@ -107,29 +109,48 @@ void Viewport3D::setupRenderer() {
     // Add grid for reference
     addGrid();
     
-    // Add axes at origin
-    addAxesAtOrigin();
+    // Note: Axes at origin removed - using orientation widget in corner instead
     
-    // Set up camera
-    renderer_->GetActiveCamera()->SetPosition(100, 100, 100);
-    renderer_->GetActiveCamera()->SetFocalPoint(0, 0, 0);
-    renderer_->GetActiveCamera()->SetViewUp(0, 0, 1);
+    // Set up camera with better initial position
+    vtkCamera* camera = renderer_->GetActiveCamera();
+    camera->SetPosition(200, 200, 200);
+    camera->SetFocalPoint(0, 0, 0);
+    camera->SetViewUp(0, 0, 1);
+    
+    // Configure camera for better interaction
+    camera->SetClippingRange(1.0, 10000.0); // Wide clipping range
+    camera->SetViewAngle(30.0); // Standard field of view
+    
     renderer_->ResetCamera();
 }
 
 void Viewport3D::setupInteractor() {
     interactor_ = renderWindow_->GetInteractor();
     if (interactor_) {
+        // Use custom interactor style that handles picking properly
+        // For now, use standard trackball camera - picking will be handled separately
         vtkSmartPointer<vtkInteractorStyleTrackballCamera> style = 
             vtkSmartPointer<vtkInteractorStyleTrackballCamera>::New();
+        
+        // Configure interaction settings for better control
+        // Note: VTK 9.1 doesn't have SetRotationFactor/SetTranslationFactor
+        // SetMotionFactor controls general motion sensitivity (default is 1.0)
+        style->SetMotionFactor(1.0);
+        
         interactor_->SetInteractorStyle(style);
+        
+        // Disable automatic picking by interactor to avoid conflicts
+        interactor_->SetPicker(nullptr);
+        
+        // Enable continuous rendering for smoother interaction
+        interactor_->SetDesiredUpdateRate(30.0); // 30 FPS
     }
 }
 
 void Viewport3D::addGrid() {
     if (!renderer_) return;
     
-    // Remove existing grid if present
+    // Remove existing grid actors if present
     if (gridActor_) {
         renderer_->RemoveActor(gridActor_);
         gridActor_ = nullptr;
@@ -137,31 +158,69 @@ void Viewport3D::addGrid() {
     
     if (!gridVisible_) return;
     
-    // Create grid on XZ plane (horizontal plane at y=0)
-    const double gridSize = 500.0; // mm
-    const int gridLines = static_cast<int>(gridSize / gridSpacing_);
+    // Create 3D infinite grid to show spatial orientation
+    // Grid extends in all three dimensions to help understand 3D space
+    const double gridExtent = 100000.0; // 100 meters - effectively infinite
+    const int gridLines = 200; // Reasonable number of lines for performance
     
     vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
     vtkSmartPointer<vtkCellArray> lines = vtkSmartPointer<vtkCellArray>::New();
     
-    // Create grid lines along X axis (parallel to Z)
-    for (int i = 0; i <= gridLines; ++i) {
-        double z = -gridSize/2.0 + i * gridSpacing_;
-        vtkIdType p1 = points->InsertNextPoint(-gridSize/2.0, 0.0, z);
-        vtkIdType p2 = points->InsertNextPoint(gridSize/2.0, 0.0, z);
+    // XY plane grid (at z=0) - horizontal grid
+    for (int i = -gridLines/2; i <= gridLines/2; ++i) {
+        double x = i * gridSpacing_;
+        // Lines parallel to Y axis
+        vtkIdType p1 = points->InsertNextPoint(x, -gridExtent, 0.0);
+        vtkIdType p2 = points->InsertNextPoint(x, gridExtent, 0.0);
         lines->InsertNextCell(2);
         lines->InsertCellPoint(p1);
         lines->InsertCellPoint(p2);
+        
+        double y = i * gridSpacing_;
+        // Lines parallel to X axis
+        vtkIdType p3 = points->InsertNextPoint(-gridExtent, y, 0.0);
+        vtkIdType p4 = points->InsertNextPoint(gridExtent, y, 0.0);
+        lines->InsertNextCell(2);
+        lines->InsertCellPoint(p3);
+        lines->InsertCellPoint(p4);
     }
     
-    // Create grid lines along Z axis (parallel to X)
-    for (int i = 0; i <= gridLines; ++i) {
-        double x = -gridSize/2.0 + i * gridSpacing_;
-        vtkIdType p1 = points->InsertNextPoint(x, 0.0, -gridSize/2.0);
-        vtkIdType p2 = points->InsertNextPoint(x, 0.0, gridSize/2.0);
+    // XZ plane grid (at y=0) - front/back grid
+    for (int i = -gridLines/2; i <= gridLines/2; ++i) {
+        double x = i * gridSpacing_;
+        // Lines parallel to Z axis
+        vtkIdType p1 = points->InsertNextPoint(x, 0.0, -gridExtent);
+        vtkIdType p2 = points->InsertNextPoint(x, 0.0, gridExtent);
         lines->InsertNextCell(2);
         lines->InsertCellPoint(p1);
         lines->InsertCellPoint(p2);
+        
+        double z = i * gridSpacing_;
+        // Lines parallel to X axis
+        vtkIdType p3 = points->InsertNextPoint(-gridExtent, 0.0, z);
+        vtkIdType p4 = points->InsertNextPoint(gridExtent, 0.0, z);
+        lines->InsertNextCell(2);
+        lines->InsertCellPoint(p3);
+        lines->InsertCellPoint(p4);
+    }
+    
+    // YZ plane grid (at x=0) - side grid
+    for (int i = -gridLines/2; i <= gridLines/2; ++i) {
+        double y = i * gridSpacing_;
+        // Lines parallel to Z axis
+        vtkIdType p1 = points->InsertNextPoint(0.0, y, -gridExtent);
+        vtkIdType p2 = points->InsertNextPoint(0.0, y, gridExtent);
+        lines->InsertNextCell(2);
+        lines->InsertCellPoint(p1);
+        lines->InsertCellPoint(p2);
+        
+        double z = i * gridSpacing_;
+        // Lines parallel to Y axis
+        vtkIdType p3 = points->InsertNextPoint(0.0, -gridExtent, z);
+        vtkIdType p4 = points->InsertNextPoint(0.0, gridExtent, z);
+        lines->InsertNextCell(2);
+        lines->InsertCellPoint(p3);
+        lines->InsertCellPoint(p4);
     }
     
     vtkSmartPointer<vtkPolyData> gridPolyData = vtkSmartPointer<vtkPolyData>::New();
@@ -173,14 +232,68 @@ void Viewport3D::addGrid() {
     
     gridActor_ = vtkSmartPointer<vtkActor>::New();
     gridActor_->SetMapper(gridMapper);
-    gridActor_->GetProperty()->SetColor(0.3, 0.3, 0.3); // Dark gray
+    gridActor_->GetProperty()->SetColor(0.5, 0.5, 0.5); // Lighter gray for better visibility
     gridActor_->GetProperty()->SetLineWidth(1.0);
+    gridActor_->GetProperty()->SetOpacity(0.6); // More visible
     
     renderer_->AddActor(gridActor_);
+    
+    // Add coordinate axes lines separately (thicker, colored)
+    // X axis (red) - thicker
+    vtkSmartPointer<vtkPoints> axisPoints = vtkSmartPointer<vtkPoints>::New();
+    vtkSmartPointer<vtkCellArray> axisLines = vtkSmartPointer<vtkCellArray>::New();
+    
+    // X axis (red)
+    vtkIdType x1 = axisPoints->InsertNextPoint(-gridExtent, 0.0, 0.0);
+    vtkIdType x2 = axisPoints->InsertNextPoint(gridExtent, 0.0, 0.0);
+    axisLines->InsertNextCell(2);
+    axisLines->InsertCellPoint(x1);
+    axisLines->InsertCellPoint(x2);
+    
+    // Y axis (green)
+    vtkIdType y1 = axisPoints->InsertNextPoint(0.0, -gridExtent, 0.0);
+    vtkIdType y2 = axisPoints->InsertNextPoint(0.0, gridExtent, 0.0);
+    axisLines->InsertNextCell(2);
+    axisLines->InsertCellPoint(y1);
+    axisLines->InsertCellPoint(y2);
+    
+    // Z axis (blue)
+    vtkIdType z1 = axisPoints->InsertNextPoint(0.0, 0.0, -gridExtent);
+    vtkIdType z2 = axisPoints->InsertNextPoint(0.0, 0.0, gridExtent);
+    axisLines->InsertNextCell(2);
+    axisLines->InsertCellPoint(z1);
+    axisLines->InsertCellPoint(z2);
+    
+    vtkSmartPointer<vtkPolyData> axisPolyData = vtkSmartPointer<vtkPolyData>::New();
+    axisPolyData->SetPoints(axisPoints);
+    axisPolyData->SetLines(axisLines);
+    
+    vtkSmartPointer<vtkPolyDataMapper> axisMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    axisMapper->SetInputData(axisPolyData);
+    
+    // Create separate actors for each axis with colors
+    vtkSmartPointer<vtkActor> xAxisActor = vtkSmartPointer<vtkActor>::New();
+    xAxisActor->SetMapper(axisMapper);
+    xAxisActor->GetProperty()->SetColor(1.0, 0.0, 0.0); // Red
+    xAxisActor->GetProperty()->SetLineWidth(2.0);
+    renderer_->AddActor(xAxisActor);
+    
+    vtkSmartPointer<vtkActor> yAxisActor = vtkSmartPointer<vtkActor>::New();
+    yAxisActor->SetMapper(axisMapper);
+    yAxisActor->GetProperty()->SetColor(0.0, 1.0, 0.0); // Green
+    yAxisActor->GetProperty()->SetLineWidth(2.0);
+    renderer_->AddActor(yAxisActor);
+    
+    vtkSmartPointer<vtkActor> zAxisActor = vtkSmartPointer<vtkActor>::New();
+    zAxisActor->SetMapper(axisMapper);
+    zAxisActor->GetProperty()->SetColor(0.0, 0.0, 1.0); // Blue
+    zAxisActor->GetProperty()->SetLineWidth(2.0);
+    renderer_->AddActor(zAxisActor);
 }
 
 void Viewport3D::setGridVisible(bool visible) {
     gridVisible_ = visible;
+    if (!renderer_) return; // Safety check - renderer not initialized yet
     addGrid(); // Recreate grid with new visibility
     if (renderWindow_) {
         renderWindow_->Render();
@@ -189,6 +302,7 @@ void Viewport3D::setGridVisible(bool visible) {
 
 void Viewport3D::setGridSpacing(double spacing) {
     if (spacing <= 0.0) return;
+    if (!renderer_) return; // Safety check - renderer not initialized yet
     gridSpacing_ = spacing;
     addGrid(); // Recreate grid with new spacing
     if (renderWindow_) {
@@ -196,21 +310,12 @@ void Viewport3D::setGridSpacing(double spacing) {
     }
 }
 
-void Viewport3D::addAxesAtOrigin() {
-    if (!renderer_) return;
-    
-    // Create smaller axes at origin (20mm length, thinner)
-    vtkSmartPointer<vtkAxesActor> axes = vtkSmartPointer<vtkAxesActor>::New();
-    axes->SetTotalLength(20.0, 20.0, 20.0); // 20mm per axis (reduced from 50mm)
-    axes->SetShaftTypeToCylinder();
-    axes->SetCylinderRadius(0.2); // Thinner shafts (reduced from 0.5)
-    axes->SetConeRadius(0.5); // Smaller cone (reduced from 1.0)
-    axes->SetNormalizedTipLength(0.15, 0.15, 0.15);
-    axes->SetNormalizedShaftLength(0.85, 0.85, 0.85);
-    axes->SetAxisLabels(1); // Show X, Y, Z labels
-    
-    renderer_->AddActor(axes);
+void Viewport3D::setSnapToGrid(bool enabled) {
+    snapToGrid_ = enabled;
+    // Snap-to-grid will be applied during transform operations
 }
+
+// Removed addAxesAtOrigin() - using orientation widget in corner instead
 #endif
 
 void Viewport3D::setSceneGraph(SceneGraph* sceneGraph) {
@@ -377,10 +482,26 @@ void Viewport3D::updateScene() {
 #else
     if (!renderer_ || !sceneGraph_) return;
     
-    // Clear existing actors (but keep them in our map to remove properly)
-    for (auto& pair : actors_) {
-        renderer_->RemoveActor(pair.second);
+    // Disable manipulator before clearing actors to prevent crashes
+    if (boxWidget_) {
+        boxWidget_->Off();
+        manipulatedNode_ = nullptr;
     }
+    
+    // Clear existing actors safely
+    // First, remove all actors from renderer
+    for (auto& pair : actors_) {
+        if (pair.second) {
+            renderer_->RemoveActor(pair.second);
+        }
+    }
+    
+    // Force render to ensure actors are removed before clearing map
+    if (renderWindow_) {
+        renderWindow_->Render();
+    }
+    
+    // Now clear the map - actors will be destroyed when smart pointers go out of scope
     actors_.clear();
     
     // Traverse scene graph and create actors
@@ -497,6 +618,82 @@ void Viewport3D::keyPressEvent(QKeyEvent* event) {
         case Qt::Key_Home:
             resetView();
             break;
+        case Qt::Key_Plus:
+        case Qt::Key_Equal:
+            // Zoom in
+            if (renderer_ && renderer_->GetActiveCamera()) {
+                renderer_->GetActiveCamera()->Zoom(1.1);
+                if (renderWindow_) renderWindow_->Render();
+            }
+            break;
+        case Qt::Key_Minus:
+        case Qt::Key_Underscore:
+            // Zoom out
+            if (renderer_ && renderer_->GetActiveCamera()) {
+                renderer_->GetActiveCamera()->Zoom(0.9);
+                if (renderWindow_) renderWindow_->Render();
+            }
+            break;
+        case Qt::Key_Up:
+            // Pan up
+            if (renderer_ && renderer_->GetActiveCamera() && interactor_) {
+                vtkCamera* camera = renderer_->GetActiveCamera();
+                double pos[3], focal[3], up[3];
+                camera->GetPosition(pos);
+                camera->GetFocalPoint(focal);
+                camera->GetViewUp(up);
+                
+                // Calculate pan distance
+                double distance = std::sqrt(
+                    (pos[0]-focal[0])*(pos[0]-focal[0]) +
+                    (pos[1]-focal[1])*(pos[1]-focal[1]) +
+                    (pos[2]-focal[2])*(pos[2]-focal[2])
+                );
+                double panDistance = distance * 0.05;
+                
+                // Pan along view up direction
+                camera->SetFocalPoint(
+                    focal[0] + up[0] * panDistance,
+                    focal[1] + up[1] * panDistance,
+                    focal[2] + up[2] * panDistance
+                );
+                camera->SetPosition(
+                    pos[0] + up[0] * panDistance,
+                    pos[1] + up[1] * panDistance,
+                    pos[2] + up[2] * panDistance
+                );
+                if (renderWindow_) renderWindow_->Render();
+            }
+            break;
+        case Qt::Key_Down:
+            // Pan down
+            if (renderer_ && renderer_->GetActiveCamera() && interactor_) {
+                vtkCamera* camera = renderer_->GetActiveCamera();
+                double pos[3], focal[3], up[3];
+                camera->GetPosition(pos);
+                camera->GetFocalPoint(focal);
+                camera->GetViewUp(up);
+                
+                double distance = std::sqrt(
+                    (pos[0]-focal[0])*(pos[0]-focal[0]) +
+                    (pos[1]-focal[1])*(pos[1]-focal[1]) +
+                    (pos[2]-focal[2])*(pos[2]-focal[2])
+                );
+                double panDistance = distance * 0.05;
+                
+                camera->SetFocalPoint(
+                    focal[0] - up[0] * panDistance,
+                    focal[1] - up[1] * panDistance,
+                    focal[2] - up[2] * panDistance
+                );
+                camera->SetPosition(
+                    pos[0] - up[0] * panDistance,
+                    pos[1] - up[1] * panDistance,
+                    pos[2] - up[2] * panDistance
+                );
+                if (renderWindow_) renderWindow_->Render();
+            }
+            break;
         default:
 #ifndef GEANTCAD_NO_VTK
             QVTKOpenGLNativeWidget::keyPressEvent(event);
@@ -522,41 +719,14 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
         return;
     }
     
-    if (event->button() == Qt::LeftButton && interactor_ && renderer_) {
-        // Only perform picking in Select mode
-        if (interactionMode_ == InteractionMode::Select) {
-            int x = event->pos().x();
-            int y = event->pos().y();
-            
-            vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
-            picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
-            
-            vtkActor* pickedActor = picker->GetActor();
-            if (pickedActor) {
-                // Find VolumeNode from actor
-                VolumeNode* pickedNode = nullptr;
-                for (const auto& pair : actors_) {
-                    if (pair.second == pickedActor) {
-                        pickedNode = pair.first;
-                        break;
-                    }
-                }
-                
-                if (pickedNode) {
-                    // Update selection highlight
-                    updateSelectionHighlight(pickedNode);
-                    emit selectionChanged(pickedNode);
-                    updateManipulator();
-                }
-            } else {
-                // Click on empty space - clear selection
-                updateSelectionHighlight(nullptr);
-                emit selectionChanged(nullptr);
-                updateManipulator();
-            }
-        }
+    // Store mouse position for drag detection
+    if (event->button() == Qt::LeftButton) {
+        lastPickPos_ = event->pos();
+        isPicking_ = false; // Will be set to true only if we actually pick
     }
     
+    // Always let VTK handle mouse events first for camera rotation
+    // We'll do picking in mouseReleaseEvent if it was a click (not drag)
     QVTKOpenGLNativeWidget::mousePressEvent(event);
 #else
     QWidget::mousePressEvent(event);
@@ -565,11 +735,67 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
+    // Handle picking ONLY if it was a click (not a drag)
+    if (event->button() == Qt::LeftButton && interactionMode_ == InteractionMode::Select) {
+        QPoint currentPos = event->pos();
+        QPoint delta = currentPos - lastPickPos_;
+        int moveThreshold = 3; // pixels - very small threshold
+        
+        // Only do picking if mouse didn't move much (it was a click, not drag)
+        if (delta.manhattanLength() < moveThreshold && interactor_ && renderer_) {
+            // It was a click - do picking now
+            int x = event->pos().x();
+            int y = event->pos().y();
+            
+            vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+            picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
+            
+            vtkActor* pickedActor = picker->GetActor();
+            if (pickedActor) {
+                // Find VolumeNode from actor - verify it's still valid
+                VolumeNode* pickedNode = nullptr;
+                for (const auto& pair : actors_) {
+                    if (pair.second && pair.second.GetPointer() == pickedActor) {
+                        pickedNode = pair.first;
+                        break;
+                    }
+                }
+                
+                if (pickedNode && actors_.find(pickedNode) != actors_.end()) {
+                    // Verify actor is still valid
+                    if (actors_[pickedNode] && actors_[pickedNode].GetPointer() == pickedActor) {
+                        updateSelectionHighlight(pickedNode);
+                        emit selectionChanged(pickedNode);
+                    }
+                }
+            } else {
+                // Click on empty space - clear selection
+                updateSelectionHighlight(nullptr);
+                emit selectionChanged(nullptr);
+            }
+            
+            // Ensure manipulator is OFF in Select mode
+            if (boxWidget_) {
+                boxWidget_->Off();
+                manipulatedNode_ = nullptr;
+            }
+            
+            // Render selection highlight
+            if (renderWindow_) {
+                renderWindow_->Render();
+            }
+        }
+        // If it was a drag, VTK already handled camera rotation - do nothing
+    }
+    
+    // Handle manipulator completion
     if (isManipulating_ && manipulatedNode_ && commandStack_) {
-        // Create command for undo/redo
-        Transform newTransform = manipulatedNode_->getTransform();
-        auto cmd = std::make_unique<TransformVolumeCommand>(manipulatedNode_, newTransform);
-        commandStack_->execute(std::move(cmd));
+        // Verify node still exists
+        if (actors_.find(manipulatedNode_) != actors_.end()) {
+            Transform newTransform = manipulatedNode_->getTransform();
+            auto cmd = std::make_unique<TransformVolumeCommand>(manipulatedNode_, newTransform);
+            commandStack_->execute(std::move(cmd));
+        }
         
         isManipulating_ = false;
         emit viewChanged();
@@ -585,16 +811,33 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
     // Reset all actors to normal appearance
     for (auto& pair : actors_) {
-        vtkActor* actor = pair.second;
+        if (!pair.second) continue; // Safety check
+        
+        vtkActor* actor = pair.second.GetPointer();
         VolumeNode* node = pair.first;
         
+        if (!node || !actor) continue; // Safety check
+        
         if (node == selectedNode) {
-            // Highlight selected: brighter color + outline
-            actor->GetProperty()->SetColor(1.0, 0.8, 0.0); // Yellow/orange highlight
-            actor->GetProperty()->SetLineWidth(3.0);
-            // Enable outline
+            // Highlight selected: brighter color + prominent outline
+            // Keep original material color but make it brighter
+            if (auto material = node->getMaterial()) {
+                auto& visual = material->getVisual();
+                // Brighten the color for selection
+                actor->GetProperty()->SetColor(
+                    std::min(1.0, visual.r * 1.3),
+                    std::min(1.0, visual.g * 1.3),
+                    std::min(1.0, visual.b * 1.3)
+                );
+            } else {
+                actor->GetProperty()->SetColor(1.0, 0.8, 0.0); // Yellow/orange highlight
+            }
+            actor->GetProperty()->SetLineWidth(4.0); // Thicker outline
+            // Enable prominent outline
             actor->GetProperty()->EdgeVisibilityOn();
-            actor->GetProperty()->SetEdgeColor(1.0, 1.0, 0.0);
+            actor->GetProperty()->SetEdgeColor(1.0, 1.0, 0.0); // Bright yellow edge
+            actor->GetProperty()->SetAmbient(0.3); // Add ambient lighting for better visibility
+            actor->GetProperty()->SetSpecular(0.8); // Add specular highlight
         } else {
             // Reset to normal
             if (auto material = node->getMaterial()) {
@@ -608,7 +851,10 @@ void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
         }
     }
     
-    if (renderWindow_) {
+    // CRITICAL: Don't render immediately during picking to avoid glitch
+    // Render will be triggered naturally by VTK event processing or after mouse release
+    // Only render if not currently picking
+    if (renderWindow_ && !isPicking_) {
         renderWindow_->Render();
     }
 }
@@ -714,30 +960,55 @@ void Viewport3D::updateManipulator() {
     
     // Find actor for selected node
     auto it = actors_.find(selected);
-    if (it == actors_.end()) {
+    if (it == actors_.end() || !it->second) {
         boxWidget_->Off();
         manipulatedNode_ = nullptr;
         return;
     }
     
-    vtkActor* actor = it->second;
+    vtkActor* actor = it->second.GetPointer();
     if (!actor) {
         boxWidget_->Off();
         manipulatedNode_ = nullptr;
         return;
     }
     
-    // Configure manipulator based on mode
-    boxWidget_->SetRotationEnabled(interactionMode_ == InteractionMode::Rotate);
-    boxWidget_->SetTranslationEnabled(interactionMode_ == InteractionMode::Move);
-    boxWidget_->SetScalingEnabled(interactionMode_ == InteractionMode::Scale);
-    
-    // Place box widget around selected actor
-    boxWidget_->SetPlaceFactor(1.25);
-    boxWidget_->PlaceWidget(actor->GetBounds());
-    boxWidget_->On();
-    
-    manipulatedNode_ = selected;
+    // CRITICAL: Safely get bounds with error checking
+    try {
+        double bounds[6];
+        actor->GetBounds(bounds);
+        
+        // Validate bounds
+        bool validBounds = true;
+        for (int i = 0; i < 6; ++i) {
+            if (!std::isfinite(bounds[i])) {
+                validBounds = false;
+                break;
+            }
+        }
+        
+        if (!validBounds) {
+            boxWidget_->Off();
+            manipulatedNode_ = nullptr;
+            return;
+        }
+        
+        // Configure manipulator based on mode
+        boxWidget_->SetRotationEnabled(interactionMode_ == InteractionMode::Rotate);
+        boxWidget_->SetTranslationEnabled(interactionMode_ == InteractionMode::Move);
+        boxWidget_->SetScalingEnabled(interactionMode_ == InteractionMode::Scale);
+        
+        // Place box widget around selected actor
+        boxWidget_->SetPlaceFactor(1.25);
+        boxWidget_->PlaceWidget(bounds);
+        boxWidget_->On();
+        
+        manipulatedNode_ = selected;
+    } catch (...) {
+        // If anything fails, disable manipulator safely
+        boxWidget_->Off();
+        manipulatedNode_ = nullptr;
+    }
     
     if (renderWindow_) {
         renderWindow_->Render();
@@ -792,10 +1063,11 @@ void Viewport3D::onManipulatorInteraction() {
         nodeTransform.setScale(scale);
     }
     
-    // Update actor transform
+    // Update actor transform - verify node still exists in map
     auto it = actors_.find(manipulatedNode_);
-    if (it != actors_.end()) {
-        vtkActor* actor = it->second;
+    if (it != actors_.end() && it->second) {
+        vtkActor* actor = it->second.GetPointer();
+        if (!actor) return; // Safety check
         auto worldTransform = manipulatedNode_->getWorldTransform();
         auto matrix = worldTransform.getMatrix();
         
@@ -819,5 +1091,22 @@ void Viewport3D::onManipulatorInteraction() {
 #endif
 }
 #endif
+
+vtkRenderer* Viewport3D::getRenderer() const {
+#ifndef GEANTCAD_NO_VTK
+    return renderer_.GetPointer();
+#else
+    return nullptr;
+#endif
+}
+
+vtkCamera* Viewport3D::getCamera() const {
+#ifndef GEANTCAD_NO_VTK
+    if (renderer_) {
+        return renderer_->GetActiveCamera();
+    }
+#endif
+    return nullptr;
+}
 
 } // namespace geantcad

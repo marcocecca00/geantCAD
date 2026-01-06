@@ -1,0 +1,28 @@
+#ifndef OpticalSD_h
+#define OpticalSD_h 1
+
+#include <G4VSensitiveDetector.hh>
+#include "OpticalHit.hh"
+
+class G4Step;
+class G4HCofThisEvent;
+class G4TouchableHistory;
+
+class OpticalSD : public G4VSensitiveDetector {
+public:
+    OpticalSD(const G4String& name, const G4String& hitsCollectionName);
+    virtual ~OpticalSD();
+
+    virtual void Initialize(G4HCofThisEvent* hce);
+    virtual G4bool ProcessHits(G4Step* step, G4TouchableHistory* history);
+    virtual void EndOfEvent(G4HCofThisEvent* hce);
+
+private:
+    OpticalHitsCollection* hitsCollection_;
+    
+    // Helper to calculate wavelength from momentum
+    G4double GetWavelength(const G4ThreeVector& momentum) const;
+};
+
+#endif
+

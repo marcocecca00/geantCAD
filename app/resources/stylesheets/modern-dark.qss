@@ -36,10 +36,7 @@ QPushButton:pressed {
     border-color: #0078d4;
 }
 
-/* Smooth transitions for buttons (Qt 5.12+) */
-QPushButton {
-    transition: background-color 150ms ease, border-color 150ms ease;
-}
+/* Note: Qt5 QSS doesn't support CSS transitions - removed for compatibility */
 
 QPushButton:disabled {
     background-color: #1a1a1a;
@@ -135,11 +132,7 @@ QCheckBox::indicator:checked {
     image: none;
 }
 
-QCheckBox::indicator:checked::after {
-    content: "✓";
-    color: white;
-    font-weight: bold;
-}
+/* Note: Qt5 QSS doesn't support ::after pseudo-element with content - using background color instead */
 
 QRadioButton::indicator {
     border-radius: 8px;
@@ -190,7 +183,7 @@ QToolBar QToolButton {
     border-radius: 3px;
     padding: 4px 8px;
     color: #e0e0e0;
-    transition: background-color 150ms ease, border-color 150ms ease;
+    /* Transition removed - Qt5 QSS doesn't support it */
 }
 
 QToolBar QToolButton:hover {
@@ -480,7 +473,7 @@ QPushButton#collapsibleHeaderButton {
     background-color: transparent;
     color: #e0e0e0;
     border-radius: 3px;
-    transition: background-color 150ms ease;
+    /* Transition removed - Qt5 QSS doesn't support it */
 }
 
 QPushButton#collapsibleHeaderButton:hover {

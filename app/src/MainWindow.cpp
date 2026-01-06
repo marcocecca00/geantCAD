@@ -1,10 +1,14 @@
 #include "MainWindow.hh"
+#include "PropertiesPanel.hh"
+#include "SimulationConfigPanel.hh"
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QMenuBar>
 #include <QMenu>
 #include <QFile>
 #include <QApplication>
+#include <QSettings>
+#include <QByteArray>
 #include "../../core/include/Shape.hh"
 #include "../../core/include/Material.hh"
 #include "../../core/include/Serialization.hh"
@@ -12,7 +16,10 @@
 #include "../../generator/include/GDMLExporter.hh"
 #include "../../generator/include/Geant4ProjectGenerator.hh"
 #include "BuildRunDialog.hh"
+#include "CameraControlWidget.hh"
 #include <QDir>
+#include <QGroupBox>
+using namespace geantcad;
 
 namespace geantcad {
 
@@ -22,72 +29,136 @@ MainWindow::MainWindow(QWidget *parent)
     , commandStack_(new CommandStack())
 {
     applyStylesheet();
-    setupUI();
+    setupUI(); // Must be called before loadPreferences() so viewport_ exists
     setupMenus();
     setupToolbars();
     setupStatusBar();
     connectSignals();
+    loadPreferences(); // Load preferences after UI is set up (but after menus to avoid fullscreen issues)
 }
 
 MainWindow::~MainWindow() {
+    savePreferences();
 }
 
 void MainWindow::setupUI() {
-    // Create central widget with splitter
+    // Create central widget with splitter (reorganized layout)
     QWidget* centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
     
     QHBoxLayout* mainLayout = new QHBoxLayout(centralWidget);
-    mainLayout->setContentsMargins(4, 4, 4, 4);
-    mainLayout->setSpacing(4);
+    mainLayout->setContentsMargins(2, 2, 2, 2);
+    mainLayout->setSpacing(2);
     
     mainSplitter_ = new QSplitter(Qt::Horizontal, this);
     mainLayout->addWidget(mainSplitter_);
     
-    // Left: Viewport (takes most space, minimum 400px width)
-    viewport_ = new Viewport3D(this);
+    // Left: Scene Hierarchy (Outliner only)
+    QGroupBox* sceneGroup = new QGroupBox("Scene", this);
+    QVBoxLayout* sceneLayout = new QVBoxLayout(sceneGroup);
+    sceneLayout->setContentsMargins(2, 2, 2, 2);
+    
+    outliner_ = new Outliner(this);
+    sceneLayout->addWidget(outliner_);
+    outliner_->setSceneGraph(sceneGraph_);
+    
+    sceneGroup->setMinimumWidth(200);
+    sceneGroup->setMaximumWidth(300);
+    mainSplitter_->addWidget(sceneGroup);
+    
+    // Center: Viewport 3D (takes most space)
+    // Create container widget for viewport + camera control overlay
+    QWidget* viewportContainer = new QWidget(this);
+    QVBoxLayout* viewportLayout = new QVBoxLayout(viewportContainer);
+    viewportLayout->setContentsMargins(0, 0, 0, 0);
+    viewportLayout->setSpacing(0);
+    
+    viewport_ = new Viewport3D(viewportContainer);
     viewport_->setSceneGraph(sceneGraph_);
     viewport_->setMinimumSize(400, 300);
     viewport_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainSplitter_->addWidget(viewport_);
+    viewportLayout->addWidget(viewport_);
     
-    // Right: Outliner + Inspector + PhysicsPanel (minimum 250px width)
+    // Add camera control widget as overlay (absolute positioning)
+    cameraControlWidget_ = new CameraControlWidget(viewportContainer);
+    cameraControlWidget_->setRenderer(viewport_->getRenderer());
+    cameraControlWidget_->setCamera(viewport_->getCamera());
+    cameraControlWidget_->setFixedSize(110, 120);
+    cameraControlWidget_->setAttribute(Qt::WA_TranslucentBackground, false);
+    cameraControlWidget_->setStyleSheet(
+        "QWidget { background-color: rgba(30, 30, 30, 220); border: 1px solid #505050; border-radius: 4px; }"
+        "QLabel { color: #e0e0e0; }"
+        "QPushButton { background-color: rgba(43, 43, 43, 220); border: 1px solid #404040; border-radius: 3px; color: #e0e0e0; font-size: 14pt; min-width: 30px; min-height: 30px; }"
+        "QPushButton:hover { background-color: rgba(58, 58, 58, 240); }"
+        "QPushButton:pressed { background-color: rgba(0, 120, 212, 240); }"
+        "QPushButton:disabled { background-color: rgba(26, 26, 26, 200); color: #606060; }"
+    );
+    cameraControlWidget_->raise(); // Bring to front
+    cameraControlWidget_->show();
+    
+    // Connect camera control signals
+    connect(cameraControlWidget_, &CameraControlWidget::viewChanged, this, [this]() {
+        viewport_->refresh();
+    });
+    
+    // Use event filter to keep camera widget positioned correctly
+    viewportContainer->installEventFilter(this);
+    
+    mainSplitter_->addWidget(viewportContainer);
+    
+    // Right: Split verticale - Properties (top) + Simulation Config (bottom)
     rightSplitter_ = new QSplitter(Qt::Vertical, this);
-    rightSplitter_->setMinimumWidth(250);
+    rightSplitter_->setMinimumWidth(300);
+    rightSplitter_->setMaximumWidth(450);
     
-    outliner_ = new Outliner(this);
-    outliner_->setSceneGraph(sceneGraph_);
-    outliner_->setMinimumHeight(150);
-    outliner_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    rightSplitter_->addWidget(outliner_);
+    // Top: Properties Panel (Inspector with all object properties)
+    propertiesPanel_ = new PropertiesPanel(this);
+    propertiesPanel_->setSceneGraph(sceneGraph_);
+    propertiesPanel_->setCommandStack(commandStack_);
+    inspector_ = propertiesPanel_->getInspector(); // Keep reference for compatibility
+    rightSplitter_->addWidget(propertiesPanel_);
     
-    inspector_ = new Inspector(this);
-    inspector_->setMinimumHeight(200);
-    inspector_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    inspector_->setCommandStack(commandStack_);
-    rightSplitter_->addWidget(inspector_);
+    // Bottom: Simulation Config Panel (Physics, Source, Output, Build & Run)
+    simulationPanel_ = new SimulationConfigPanel(this);
+    physicsPanel_ = simulationPanel_->getPhysicsPanel();
+    outputPanel_ = simulationPanel_->getOutputPanel();
+    particleGunPanel_ = simulationPanel_->getParticleGunPanel();
+    rightSplitter_->addWidget(simulationPanel_);
     
-    physicsPanel_ = new PhysicsPanel(this);
-    physicsPanel_->hide(); // Hidden, accessible via menu/dialog
-    
-    outputPanel_ = new OutputPanel(this);
-    outputPanel_->hide(); // Hidden, accessible via menu/dialog
-    
-    particleGunPanel_ = new ParticleGunPanel(this);
-    particleGunPanel_->hide(); // Hidden, accessible via menu/dialog
-    
-    // Set stretch factors: outliner gets less space, inspector gets more
-    rightSplitter_->setStretchFactor(0, 2);
-    rightSplitter_->setStretchFactor(1, 3);
+    // Set splitter sizes: Properties 60%, Simulation 40%
+    rightSplitter_->setStretchFactor(0, 60);
+    rightSplitter_->setStretchFactor(1, 40);
+    rightSplitter_->setSizes({400, 300});
     
     mainSplitter_->addWidget(rightSplitter_);
     
-    // Set stretch factors: viewport gets 70%, right panel gets 30%
-    mainSplitter_->setStretchFactor(0, 7);
-    mainSplitter_->setStretchFactor(1, 3);
+    // Set stretch factors: Left 20%, Viewport 50%, Right 30%
+    mainSplitter_->setStretchFactor(0, 20);
+    mainSplitter_->setStretchFactor(1, 50);
+    mainSplitter_->setStretchFactor(2, 30);
     
-    // Set initial sizes: viewport gets 70%, right panel gets 30%
-    mainSplitter_->setSizes({700, 300});
+    // Set initial sizes
+    mainSplitter_->setSizes({200, 800, 350});
+    
+    // Add camera control widget to viewport (overlay in corner)
+    cameraControlWidget_ = new CameraControlWidget(viewport_);
+    cameraControlWidget_->setRenderer(viewport_->getRenderer());
+    cameraControlWidget_->setCamera(viewport_->getCamera());
+    cameraControlWidget_->setFixedSize(110, 120);
+    cameraControlWidget_->move(10, 10); // Top-left corner
+    cameraControlWidget_->setStyleSheet(
+        "QWidget { background-color: rgba(30, 30, 30, 200); border-radius: 4px; }"
+        "QPushButton { background-color: rgba(43, 43, 43, 200); border: 1px solid #404040; border-radius: 3px; color: #e0e0e0; font-size: 14pt; }"
+        "QPushButton:hover { background-color: rgba(58, 58, 58, 200); }"
+        "QPushButton:pressed { background-color: rgba(0, 120, 212, 200); }"
+        "QPushButton:disabled { background-color: rgba(26, 26, 26, 200); color: #606060; }"
+    );
+    cameraControlWidget_->show();
+    
+    // Connect camera control signals
+    connect(cameraControlWidget_, &CameraControlWidget::viewChanged, this, [this]() {
+        viewport_->refresh();
+    });
 }
 
 void MainWindow::setupMenus() {
@@ -101,6 +172,127 @@ void MainWindow::setupMenus() {
     QAction* saveAsAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Save &As...", this, [this]() { onSaveAs(); }, QKeySequence::SaveAs);
     fileMenu->addSeparator();
     QAction* exitAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DialogCloseButton), "E&xit", this, &QWidget::close, QKeySequence::Quit);
+    
+    // Insert menu (for shapes/primitives)
+    QMenu* insertMenu = menuBar->addMenu("&Insert");
+    QMenu* shapeMenu = insertMenu->addMenu("&Shape");
+    
+    // Box shape
+    QAction* insertBoxAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_FileIcon), "&Box", this, [this]() {
+        auto boxShape = makeBox(50.0, 50.0, 50.0);
+        auto material = Material::makeAir();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Box", std::move(boxShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        statusBar_->showMessage("Created Box", 2000);
+    });
+    insertBoxAction->setShortcut(QKeySequence("Ctrl+Shift+B"));
+    
+    // Tube shape
+    QAction* insertTubeAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_DirIcon), "&Tube", this, [this]() {
+        auto tubeShape = makeTube(0.0, 30.0, 50.0);
+        auto material = Material::makeWater();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Tube", std::move(tubeShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        statusBar_->showMessage("Created Tube", 2000);
+    });
+    insertTubeAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+    
+    // Sphere shape
+    QAction* insertSphereAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_ComputerIcon), "&Sphere", this, [this]() {
+        auto sphereShape = makeSphere(0.0, 40.0);
+        auto material = Material::makeAir();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Sphere", std::move(sphereShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        statusBar_->showMessage("Created Sphere", 2000);
+    });
+    insertSphereAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
+    
+    // Cone shape
+    QAction* insertConeAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_DriveCDIcon), "&Cone", this, [this]() {
+        auto coneShape = makeCone(0.0, 20.0, 0.0, 40.0, 50.0);
+        auto material = Material::makeLead();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Cone", std::move(coneShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        statusBar_->showMessage("Created Cone", 2000);
+    });
+    insertConeAction->setShortcut(QKeySequence("Ctrl+Shift+C"));
+    
+    // Trd shape
+    QAction* insertTrdAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), "&Trd", this, [this]() {
+        auto trdShape = makeTrd(30.0, 20.0, 30.0, 20.0, 50.0);
+        auto material = Material::makeSilicon();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Trd", std::move(trdShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        statusBar_->showMessage("Created Trd", 2000);
+    });
+    insertTrdAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
+    
+    // View menu
+    QMenu* viewMenu = menuBar->addMenu("&View");
+    QAction* frameAction = viewMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogListView), "Frame &Selection", this, [this]() { 
+        viewport_->frameSelection();
+        statusBar_->showMessage("Framed selection", 1000);
+    }, QKeySequence("F"));
+    QAction* resetViewAction = viewMenu->addAction(style()->standardIcon(QStyle::SP_MediaSkipBackward), "&Reset View", this, [this]() { 
+        viewport_->resetView();
+        statusBar_->showMessage("View reset", 1000);
+    }, QKeySequence("Home"));
+    viewMenu->addSeparator();
+    QAction* toggleGridAction = viewMenu->addAction("Toggle &Grid", this, [this]() { 
+        bool visible = viewport_->isGridVisible();
+        viewport_->setGridVisible(!visible);
+        statusBar_->showMessage(visible ? "Grid hidden" : "Grid shown", 1000);
+    }, QKeySequence("Ctrl+G"));
+    toggleGridAction->setCheckable(true);
+    toggleGridAction->setChecked(viewport_->isGridVisible());
+    
+    QAction* toggleSnapAction = viewMenu->addAction("Snap to &Grid", this, [this]() { 
+        bool enabled = viewport_->isSnapToGrid();
+        viewport_->setSnapToGrid(!enabled);
+        statusBar_->showMessage(enabled ? "Snap to grid disabled" : "Snap to grid enabled", 1000);
+    });
+    toggleSnapAction->setCheckable(true);
+    toggleSnapAction->setChecked(viewport_->isSnapToGrid());
+    
+    viewMenu->addSeparator();
+    
+    // Grid spacing submenu
+    QMenu* gridSpacingMenu = viewMenu->addMenu("Grid &Spacing");
+    QActionGroup* spacingGroup = new QActionGroup(this);
+    spacingGroup->setExclusive(true);
+    
+    QList<QPair<double, QString>> spacingOptions = {
+        {10.0, "10 mm"},
+        {25.0, "25 mm"},
+        {50.0, "50 mm"},
+        {100.0, "100 mm"},
+        {250.0, "250 mm"},
+        {500.0, "500 mm"}
+    };
+    
+    for (const auto& option : spacingOptions) {
+        QAction* spacingAction = gridSpacingMenu->addAction(option.second, this, [this, option]() {
+            viewport_->setGridSpacing(option.first);
+            statusBar_->showMessage(QString("Grid spacing set to %1").arg(option.second), 1000);
+        });
+        spacingAction->setCheckable(true);
+        spacingGroup->addAction(spacingAction);
+        
+        // Check current spacing
+        if (std::abs(viewport_->getGridSpacing() - option.first) < 0.1) {
+            spacingAction->setChecked(true);
+        }
+    }
     
     // Generate menu
     QMenu* generateMenu = menuBar->addMenu("&Generate");
@@ -119,64 +311,8 @@ void MainWindow::setupStatusBar() {
 }
 
 void MainWindow::connectSignals() {
-    // Toolbar signals - create primitives (with undo/redo)
-    connect(toolbar_, &Toolbar::createBox, this, [this]() {
-        auto boxShape = makeBox(50.0, 50.0, 50.0); // 100x100x100 mm (half-lengths)
-        auto material = Material::makeAir();
-        
-        auto cmd = std::make_unique<CreateVolumeCommand>(
-            sceneGraph_, "Box", std::move(boxShape), material);
-        
-        commandStack_->execute(std::move(cmd));
-        
-        outliner_->refresh();
-        viewport_->refresh();
-        statusBar_->showMessage("Created Box", 2000);
-    });
-    
-    connect(toolbar_, &Toolbar::createTube, this, [this]() {
-        VolumeNode* node = sceneGraph_->createVolume("Tube");
-        auto tubeShape = makeTube(0.0, 30.0, 50.0); // rmax=30mm, dz=50mm
-        node->setShape(std::move(tubeShape));
-        node->setMaterial(Material::makeWater());
-        
-        outliner_->refresh();
-        viewport_->refresh();
-        statusBar_->showMessage("Created Tube", 2000);
-    });
-    
-    connect(toolbar_, &Toolbar::createSphere, this, [this]() {
-        VolumeNode* node = sceneGraph_->createVolume("Sphere");
-        auto sphereShape = makeSphere(0.0, 40.0); // rmax=40mm
-        node->setShape(std::move(sphereShape));
-        node->setMaterial(Material::makeAir());
-        
-        outliner_->refresh();
-        viewport_->refresh();
-        statusBar_->showMessage("Created Sphere", 2000);
-    });
-    
-    connect(toolbar_, &Toolbar::createCone, this, [this]() {
-        VolumeNode* node = sceneGraph_->createVolume("Cone");
-        auto coneShape = makeCone(0.0, 20.0, 0.0, 40.0, 50.0);
-        node->setShape(std::move(coneShape));
-        node->setMaterial(Material::makeLead());
-        
-        outliner_->refresh();
-        viewport_->refresh();
-        statusBar_->showMessage("Created Cone", 2000);
-    });
-    
-    connect(toolbar_, &Toolbar::createTrd, this, [this]() {
-        VolumeNode* node = sceneGraph_->createVolume("Trd");
-        auto trdShape = makeTrd(30.0, 20.0, 30.0, 20.0, 50.0);
-        node->setShape(std::move(trdShape));
-        node->setMaterial(Material::makeSilicon());
-        
-        outliner_->refresh();
-        viewport_->refresh();
-        statusBar_->showMessage("Created Trd", 2000);
-    });
+    // Shape creation moved to Insert -> Shape menu
+    // Toolbar now only handles manipulation tools
     
     connect(toolbar_, &Toolbar::toolSelect, this, [this]() {
         statusBar_->showMessage("Select tool", 1000);
@@ -258,7 +394,7 @@ void MainWindow::connectSignals() {
         outliner_->refresh();
     });
     
-    // Outliner selection
+    // Project Manager Panel selection
     connect(outliner_, &Outliner::nodeSelected, this, [this](VolumeNode* node) {
         sceneGraph_->setSelected(node);
         inspector_->setNode(node);
@@ -271,17 +407,16 @@ void MainWindow::connectSignals() {
         outliner_->refresh();
     });
     
-    // Physics panel changes
-    connect(physicsPanel_, &PhysicsPanel::configChanged, this, [this]() {
+    // Right Panel Container signals
+    connect(simulationPanel_, &SimulationConfigPanel::physicsConfigChanged, this, [this]() {
         sceneGraph_->getPhysicsConfig() = physicsPanel_->getConfig();
     });
     
-    // Output panel changes
-    connect(outputPanel_, &OutputPanel::configChanged, this, [this]() {
+    connect(simulationPanel_, &SimulationConfigPanel::outputConfigChanged, this, [this]() {
         sceneGraph_->getOutputConfig() = outputPanel_->getConfig();
     });
     
-    connect(particleGunPanel_, &ParticleGunPanel::configChanged, this, [this]() {
+    connect(simulationPanel_, &SimulationConfigPanel::particleGunConfigChanged, this, [this]() {
         sceneGraph_->getParticleGunConfig() = particleGunPanel_->getConfig();
     });
 }
@@ -433,6 +568,62 @@ void MainWindow::applyStylesheet() {
         "QPushButton { background-color: #2b2b2b; border: 1px solid #404040; border-radius: 4px; padding: 6px 12px; color: #e0e0e0; }"
         "QPushButton:hover { background-color: #3a3a3a; }"
     );
+}
+
+void MainWindow::loadPreferences() {
+    QSettings settings("GeantCAD", "GeantCAD");
+    
+    // Restore window geometry and state
+    restoreGeometry(settings.value("geometry").toByteArray());
+    restoreState(settings.value("windowState").toByteArray());
+    
+    // Restore splitter sizes
+    if (mainSplitter_) {
+        QList<int> sizes = settings.value("mainSplitterSizes").value<QList<int>>();
+        if (!sizes.isEmpty()) {
+            mainSplitter_->setSizes(sizes);
+        }
+    }
+    
+    // Restore grid settings
+    if (viewport_) {
+        bool gridVisible = settings.value("gridVisible", true).toBool();
+        double gridSpacing = settings.value("gridSpacing", 50.0).toDouble();
+        viewport_->setGridVisible(gridVisible);
+        viewport_->setGridSpacing(gridSpacing);
+    }
+}
+
+void MainWindow::savePreferences() {
+    QSettings settings("GeantCAD", "GeantCAD");
+    
+    // Save window geometry and state
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState());
+    
+    // Save splitter sizes
+    if (mainSplitter_) {
+        settings.setValue("mainSplitterSizes", QVariant::fromValue(mainSplitter_->sizes()));
+    }
+    
+    // Save grid settings
+    if (viewport_) {
+        settings.setValue("gridVisible", viewport_->isGridVisible());
+        settings.setValue("gridSpacing", viewport_->getGridSpacing());
+    }
+}
+
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+    // Keep camera control widget positioned in top-left corner of viewport container
+    if (obj == viewport_->parent() && event->type() == QEvent::Resize) {
+        if (cameraControlWidget_) {
+            QWidget* container = qobject_cast<QWidget*>(obj);
+            if (container) {
+                cameraControlWidget_->move(10, 10);
+            }
+        }
+    }
+    return QMainWindow::eventFilter(obj, event);
 }
 
 } // namespace geantcad

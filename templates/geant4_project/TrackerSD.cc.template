@@ -1,0 +1,60 @@
+#include "TrackerSD.hh"
+#include "TrackerHit.hh"
+#include <G4SDManager.hh>
+#include <G4SystemOfUnits.hh>
+#include <G4Step.hh>
+#include <G4Track.hh>
+#include <G4VPhysicalVolume.hh>
+#include <G4VTouchable.hh>
+#include <G4TouchableHistory.hh>
+
+TrackerSD::TrackerSD(const G4String& name, const G4String& hitsCollectionName)
+    : G4VSensitiveDetector(name)
+{
+    collectionName.insert(hitsCollectionName);
+}
+
+TrackerSD::~TrackerSD() {
+}
+
+void TrackerSD::Initialize(G4HCofThisEvent* hce) {
+    hitsCollection_ = new TrackerHitsCollection(SensitiveDetectorName, collectionName[0]);
+    
+    G4int hcID = G4SDManager::GetSDMpointer()->GetCollectionID(collectionName[0]);
+    hce->AddHitsCollection(hcID, hitsCollection_);
+}
+
+G4bool TrackerSD::ProcessHits(G4Step* step, G4TouchableHistory* history) {
+    // Tracker records every step (not just energy deposition)
+    TrackerHit* hit = new TrackerHit();
+    
+    G4Track* track = step->GetTrack();
+    G4StepPoint* prePoint = step->GetPreStepPoint();
+    G4StepPoint* postPoint = step->GetPostStepPoint();
+    
+    hit->SetTrackID(track->GetTrackID());
+    hit->SetParentID(track->GetParentID());
+    hit->SetParticleName(track->GetDefinition()->GetParticleName());
+    hit->SetPos(prePoint->GetPosition());
+    hit->SetMom(prePoint->GetMomentum());
+    hit->SetKineticEnergy(prePoint->GetKineticEnergy());
+    hit->SetTime(prePoint->GetGlobalTime());
+    hit->SetStepLength(step->GetStepLength());
+    hit->SetEdep(step->GetTotalEnergyDeposit());
+    
+    G4VPhysicalVolume* physVol = prePoint->GetPhysicalVolume();
+    if (physVol) {
+        hit->SetVolumeName(physVol->GetName());
+        hit->SetCopyNumber(physVol->GetCopyNo());
+    }
+    
+    hitsCollection_->insert(hit);
+    return true;
+}
+
+void TrackerSD::EndOfEvent(G4HCofThisEvent*) {
+    // ==== USER CODE BEGIN EndOfEvent
+    // Custom end-of-event processing here
+    // ==== USER CODE END EndOfEvent
+}
+

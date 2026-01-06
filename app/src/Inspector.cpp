@@ -3,12 +3,15 @@
 #include "../../core/include/Material.hh"
 #include "../../core/include/Shape.hh"
 #include "../../core/include/Command.hh"
+#include "../../core/include/VolumeNode.hh"
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QCheckBox>
 #include <QSpinBox>
 #include <QFormLayout>
+#include <QColor>
 #include <cmath>
 
 namespace geantcad {
@@ -81,6 +84,8 @@ void Inspector::setupUI() {
     QWidget* materialContent = new QWidget(this);
     QVBoxLayout* materialLayout = new QVBoxLayout(materialContent);
     materialLayout->setContentsMargins(8, 8, 8, 8);
+    
+    QHBoxLayout* materialRowLayout = new QHBoxLayout();
     materialCombo_ = new QComboBox(this);
     connect(materialCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Inspector::onMaterialChanged);
     materialCombo_->addItem("Air", "G4_AIR");
@@ -88,7 +93,17 @@ void Inspector::setupUI() {
     materialCombo_->addItem("Silicon", "G4_Si");
     materialCombo_->addItem("Lead", "G4_Pb");
     materialCombo_->addItem("Vacuum", "G4_Galactic");
-    materialLayout->addWidget(materialCombo_);
+    materialRowLayout->addWidget(materialCombo_);
+    
+    // Color preview
+    materialColorPreview_ = new QLabel(this);
+    materialColorPreview_->setMinimumSize(30, 30);
+    materialColorPreview_->setMaximumSize(30, 30);
+    materialColorPreview_->setStyleSheet("border: 1px solid #404040; border-radius: 3px;");
+    materialColorPreview_->setToolTip("Material color preview");
+    materialRowLayout->addWidget(materialColorPreview_);
+    
+    materialLayout->addLayout(materialRowLayout);
     
     CollapsibleGroupBox* materialCollapsible = new CollapsibleGroupBox("Material", this);
     materialCollapsible->setContent(materialContent);
@@ -401,6 +416,10 @@ void Inspector::updateUI() {
             if (index >= 0) {
                 materialCombo_->setCurrentIndex(index);
             }
+            // Update color preview
+            updateMaterialColorPreview(material);
+        } else {
+            materialColorPreview_->setStyleSheet("border: 1px solid #404040; border-radius: 3px; background-color: #2b2b2b;");
         }
         
         // Sensitive Detector
@@ -456,15 +475,21 @@ void Inspector::updateUI() {
 void Inspector::onTransformChanged() {
     if (updating_ || !currentNode_) return;
     
-    // Update transform
-    auto& t = currentNode_->getTransform();
+    Transform newTransform = currentNode_->getTransform();
     
     // Update position
     QVector3D pos(posX_->value(), posY_->value(), posZ_->value());
-    t.setTranslation(pos);
+    newTransform.setTranslation(pos);
     
     // Update rotation (Euler angles in degrees)
-    t.setRotationEuler(rotX_->value(), rotY_->value(), rotZ_->value());
+    newTransform.setRotationEuler(rotX_->value(), rotY_->value(), rotZ_->value());
+    
+    if (commandStack_) {
+        auto cmd = std::make_unique<TransformVolumeCommand>(currentNode_, newTransform);
+        commandStack_->execute(std::move(cmd));
+    } else {
+        currentNode_->getTransform() = newTransform;
+    }
     
     emit nodeChanged(currentNode_);
     
@@ -476,7 +501,13 @@ void Inspector::onTransformChanged() {
 void Inspector::onNameChanged() {
     if (updating_ || !currentNode_) return;
     
-    currentNode_->setName(nameEdit_->text().toStdString());
+    std::string newName = nameEdit_->text().toStdString();
+    if (commandStack_) {
+        auto cmd = std::make_unique<ModifyNameCommand>(currentNode_, newName);
+        commandStack_->execute(std::move(cmd));
+    } else {
+        currentNode_->setName(newName);
+    }
     emit nodeChanged(currentNode_);
 }
 
@@ -485,27 +516,63 @@ void Inspector::onMaterialChanged() {
     
     QString nistName = materialCombo_->currentData().toString();
     auto material = Material::makeNist(nistName.toStdString());
-    currentNode_->setMaterial(material);
+    
+    if (commandStack_) {
+        auto cmd = std::make_unique<ModifyMaterialCommand>(currentNode_, material);
+        commandStack_->execute(std::move(cmd));
+    } else {
+        currentNode_->setMaterial(material);
+    }
+    
+    // Update color preview
+    updateMaterialColorPreview(material);
     
     emit nodeChanged(currentNode_);
+}
+
+void Inspector::updateMaterialColorPreview(std::shared_ptr<Material> material) {
+    if (!material || !materialColorPreview_) return;
+    
+    const auto& visual = material->getVisual();
+    QColor color;
+    color.setRgbF(visual.r, visual.g, visual.b, visual.a);
+    
+    QString styleSheet = QString("border: 1px solid #404040; border-radius: 3px; background-color: %1;")
+                        .arg(color.name());
+    materialColorPreview_->setStyleSheet(styleSheet);
+    
+    // Update tooltip with color info
+    QString tooltip = QString("Material: %1\nColor: RGB(%2, %3, %4)")
+                     .arg(QString::fromStdString(material->getName()))
+                     .arg(static_cast<int>(visual.r * 255))
+                     .arg(static_cast<int>(visual.g * 255))
+                     .arg(static_cast<int>(visual.b * 255));
+    materialColorPreview_->setToolTip(tooltip);
 }
 
 void Inspector::onSDChanged() {
     if (updating_ || !currentNode_) return;
     
-    auto& sdConfig = currentNode_->getSDConfig();
-    sdConfig.enabled = sdEnabledCheck_->isChecked();
+    SensitiveDetectorConfig newConfig = currentNode_->getSDConfig();
+    newConfig.enabled = sdEnabledCheck_->isChecked();
     
-    if (sdConfig.enabled) {
-        sdConfig.type = sdTypeCombo_->currentData().toString().toStdString();
+    if (newConfig.enabled) {
+        newConfig.type = sdTypeCombo_->currentData().toString().toStdString();
         QString collectionName = sdCollectionEdit_->text().trimmed();
         if (collectionName.isEmpty()) {
             // Auto-generate collection name from node name
             collectionName = QString::fromStdString(currentNode_->getName()) + "HitsCollection";
             sdCollectionEdit_->setText(collectionName);
         }
-        sdConfig.collectionName = collectionName.toStdString();
-        sdConfig.copyNumber = sdCopyNumberSpin_->value();
+        newConfig.collectionName = collectionName.toStdString();
+        newConfig.copyNumber = sdCopyNumberSpin_->value();
+    }
+    
+    if (commandStack_) {
+        auto cmd = std::make_unique<ModifySDConfigCommand>(currentNode_, newConfig);
+        commandStack_->execute(std::move(cmd));
+    } else {
+        currentNode_->getSDConfig() = newConfig;
     }
     
     emit nodeChanged(currentNode_);
@@ -514,14 +581,22 @@ void Inspector::onSDChanged() {
 void Inspector::onOpticalChanged() {
     if (updating_ || !currentNode_) return;
     
-    auto& opticalConfig = currentNode_->getOpticalConfig();
-    opticalConfig.enabled = opticalEnabledCheck_->isChecked();
+    OpticalSurfaceConfig newConfig = currentNode_->getOpticalConfig();
+    newConfig.enabled = opticalEnabledCheck_->isChecked();
     
-    if (opticalConfig.enabled) {
-        opticalConfig.model = opticalModelCombo_->currentData().toString().toStdString();
-        opticalConfig.finish = opticalFinishCombo_->currentData().toString().toStdString();
-        opticalConfig.reflectivity = opticalReflectivitySpin_->value();
-        opticalConfig.sigmaAlpha = opticalSigmaAlphaSpin_->value();
+    if (newConfig.enabled) {
+        newConfig.model = opticalModelCombo_->currentData().toString().toStdString();
+        newConfig.finish = opticalFinishCombo_->currentData().toString().toStdString();
+        newConfig.reflectivity = opticalReflectivitySpin_->value();
+        newConfig.sigmaAlpha = opticalSigmaAlphaSpin_->value();
+        newConfig.preset = opticalPresetCombo_->currentData().toString().toStdString();
+    }
+    
+    if (commandStack_) {
+        auto cmd = std::make_unique<ModifyOpticalConfigCommand>(currentNode_, newConfig);
+        commandStack_->execute(std::move(cmd));
+    } else {
+        currentNode_->getOpticalConfig() = newConfig;
     }
     
     emit nodeChanged(currentNode_);

@@ -45,11 +45,35 @@ public:
     
     // Factory: common NIST materials
     static std::shared_ptr<Material> makeNist(const std::string& nistName);
+    
+    // Common material factories
     static std::shared_ptr<Material> makeAir();
     static std::shared_ptr<Material> makeVacuum();
     static std::shared_ptr<Material> makeWater();
     static std::shared_ptr<Material> makeLead();
     static std::shared_ptr<Material> makeSilicon();
+    static std::shared_ptr<Material> makeAluminum();
+    static std::shared_ptr<Material> makeIron();
+    static std::shared_ptr<Material> makeCopper();
+    static std::shared_ptr<Material> makeTitanium();
+    static std::shared_ptr<Material> makeStainlessSteel();
+    static std::shared_ptr<Material> makeBrass();
+    static std::shared_ptr<Material> makeBronze();
+    static std::shared_ptr<Material> makeGlass();
+    static std::shared_ptr<Material> makePolystyrene();
+    static std::shared_ptr<Material> makePolyethylene();
+    static std::shared_ptr<Material> makePlexiglass();
+    static std::shared_ptr<Material> makeCarbonDioxide();
+    static std::shared_ptr<Material> makeArgon();
+    static std::shared_ptr<Material> makeHelium();
+    static std::shared_ptr<Material> makeNitrogen();
+    static std::shared_ptr<Material> makeOxygen();
+    static std::shared_ptr<Material> makeSodium();
+    static std::shared_ptr<Material> makeIodine();
+    static std::shared_ptr<Material> makeCesiumIodide();
+    static std::shared_ptr<Material> makeSodiumIodide();
+    static std::shared_ptr<Material> makeBGO();
+    static std::shared_ptr<Material> makeLYSO();
 
 private:
     std::string name_;

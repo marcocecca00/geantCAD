@@ -11,9 +11,12 @@ option(GEANTCAD_BUILD_EXAMPLES "Build example projects" ON)
 option(GEANTCAD_BUILD_PYTHON_BINDINGS "Build Python bindings" ON)
 
 # Find dependencies
-# Qt5 is required (for VTK compatibility)
+# Note: Currently using Qt5 because VTK is typically compiled with Qt5
+# For Qt6 support, VTK must be recompiled with Qt6 enabled
 find_package(Qt5 REQUIRED COMPONENTS Core Widgets OpenGL Gui)
+set(QT_VERSION_MAJOR 5)
 message(STATUS "Qt5 found: ${Qt5_VERSION}")
+message(STATUS "Note: For Qt6 support, VTK must be recompiled with Qt6 enabled")
 
 find_package(nlohmann_json 3.2.0 QUIET)
 if(NOT nlohmann_json_FOUND)
@@ -63,11 +66,19 @@ add_library(geantcad_core
     core/src/ParticleGunConfig.cpp
 )
 
+if(QT_VERSION_MAJOR EQUAL 6)
 target_link_libraries(geantcad_core
     Qt5::Core
     Qt5::Gui
     nlohmann_json::nlohmann_json
 )
+else()
+    target_link_libraries(geantcad_core
+        Qt5::Core
+        Qt5::Gui
+        nlohmann_json::nlohmann_json
+    )
+endif()
 
 # Generator library
 add_library(geantcad_generator
@@ -98,6 +109,9 @@ add_executable(geantcad
     app/src/ParticleGunPanel.cpp
     app/src/BuildRunDialog.cpp
     app/src/CollapsibleGroupBox.cpp
+    app/src/PropertiesPanel.cpp
+    app/src/SimulationConfigPanel.cpp
+    app/src/CameraControlWidget.cpp
     app/include/Toolbar.hh
     app/include/MainWindow.hh
     app/include/Viewport3D.hh
@@ -108,9 +122,13 @@ add_executable(geantcad
     app/include/ParticleGunPanel.hh
     app/include/BuildRunDialog.hh
     app/include/CollapsibleGroupBox.hh
+    app/include/PropertiesPanel.hh
+    app/include/SimulationConfigPanel.hh
+    app/include/CameraControlWidget.hh
     app/resources/resources.qrc
 )
 
+if(QT_VERSION_MAJOR EQUAL 6)
 target_link_libraries(geantcad
     geantcad_core
     geantcad_generator
@@ -118,6 +136,15 @@ target_link_libraries(geantcad
     Qt5::Widgets
     Qt5::OpenGL
 )
+else()
+    target_link_libraries(geantcad
+        geantcad_core
+        geantcad_generator
+        Qt5::Core
+        Qt5::Widgets
+        Qt5::OpenGL
+    )
+endif()
 
 # VTK - try to find it with Qt support
 find_package(VTK QUIET COMPONENTS 
@@ -153,7 +180,7 @@ else()
     add_definitions(-DGEANTCAD_NO_VTK)
 endif()
 
-# Qt5::Gui is needed
+# Qt5::Gui is needed for some VTK components
 target_link_libraries(geantcad Qt5::Gui)
 
 # Python bindings (optional)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QPoint>
 
 #ifndef GEANTCAD_NO_VTK
 #include <QVTKOpenGLNativeWidget.h>
@@ -62,9 +63,15 @@ public:
     bool isGridVisible() const { return gridVisible_; }
     void setGridSpacing(double spacing); // in mm
     double getGridSpacing() const { return gridSpacing_; }
+    void setSnapToGrid(bool enabled);
+    bool isSnapToGrid() const { return snapToGrid_; }
     
     // Rendering
     void refresh();
+    
+    // Camera control access
+    vtkRenderer* getRenderer() const;
+    vtkCamera* getCamera() const;
 
 signals:
     void selectionChanged(VolumeNode* node);
@@ -106,11 +113,19 @@ private:
     vtkSmartPointer<vtkActor> gridActor_;
     bool gridVisible_ = true;
     double gridSpacing_ = 50.0; // mm
+    bool snapToGrid_ = false;
+    
+    // Helper function for snap to grid
+    double snapValue(double value) const;
     
     // Manipulator widget
     vtkSmartPointer<vtkBoxWidget> boxWidget_;
     VolumeNode* manipulatedNode_ = nullptr;
     bool isManipulating_ = false;
+    
+    // Picking state
+    bool isPicking_ = false;
+    QPoint lastPickPos_;
 #endif
 };
 

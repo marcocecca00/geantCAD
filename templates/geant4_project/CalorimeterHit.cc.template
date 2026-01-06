@@ -1,0 +1,70 @@
+#include "CalorimeterHit.hh"
+#include <G4UnitsTable.hh>
+#include <G4VVisManager.hh>
+#include <G4Circle.hh>
+#include <G4Colour.hh>
+#include <G4VisAttributes.hh>
+
+G4ThreadLocal G4Allocator<CalorimeterHit>* CalorimeterHitAllocator = nullptr;
+
+CalorimeterHit::CalorimeterHit()
+    : trackID_(-1), parentID_(-1), edep_(0.), time_(0.), copyNumber_(-1)
+{
+}
+
+CalorimeterHit::~CalorimeterHit() {
+}
+
+CalorimeterHit::CalorimeterHit(const CalorimeterHit& right)
+    : G4VHit(right)
+{
+    trackID_ = right.trackID_;
+    parentID_ = right.parentID_;
+    edep_ = right.edep_;
+    pos_ = right.pos_;
+    time_ = right.time_;
+    volumeName_ = right.volumeName_;
+    copyNumber_ = right.copyNumber_;
+}
+
+const CalorimeterHit& CalorimeterHit::operator=(const CalorimeterHit& right) {
+    if (this != &right) {
+        trackID_ = right.trackID_;
+        parentID_ = right.parentID_;
+        edep_ = right.edep_;
+        pos_ = right.pos_;
+        time_ = right.time_;
+        volumeName_ = right.volumeName_;
+        copyNumber_ = right.copyNumber_;
+    }
+    return *this;
+}
+
+G4int CalorimeterHit::operator==(const CalorimeterHit& right) const {
+    return (this == &right) ? 1 : 0;
+}
+
+void CalorimeterHit::Draw() {
+    G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
+    if (pVVisManager) {
+        G4Circle circle(pos_);
+        circle.SetScreenSize(4.);
+        circle.SetFillStyle(G4Circle::filled);
+        G4Colour colour(1., 0., 0.);
+        G4VisAttributes attribs(colour);
+        circle.SetVisAttributes(attribs);
+        pVVisManager->Draw(circle);
+    }
+}
+
+void CalorimeterHit::Print() {
+    G4cout << "CalorimeterHit: trackID=" << trackID_
+           << " parentID=" << parentID_
+           << " edep=" << G4BestUnit(edep_, "Energy")
+           << " pos=" << G4BestUnit(pos_, "Length")
+           << " time=" << G4BestUnit(time_, "Time")
+           << " volume=" << volumeName_
+           << " copyNo=" << copyNumber_
+           << G4endl;
+}
+

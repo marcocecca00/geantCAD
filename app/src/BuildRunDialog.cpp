@@ -49,6 +49,17 @@ void BuildRunDialog::setupUI() {
     dirLayout->addWidget(browseButton_);
     mainLayout->addLayout(dirLayout);
     
+    // Build directory (optional, defaults to projectDir/build)
+    QHBoxLayout* buildDirLayout = new QHBoxLayout();
+    buildDirLayout->addWidget(new QLabel("Build Directory (optional):", this));
+    buildDirEdit_ = new QLineEdit(this);
+    buildDirEdit_->setPlaceholderText("Defaults to <project>/build");
+    buildDirLayout->addWidget(buildDirEdit_);
+    browseBuildDirButton_ = new QPushButton("Browse...", this);
+    connect(browseBuildDirButton_, &QPushButton::clicked, this, &BuildRunDialog::onBrowseBuildDir);
+    buildDirLayout->addWidget(browseBuildDirButton_);
+    mainLayout->addLayout(buildDirLayout);
+    
     // Console output
     consoleOutput_ = new QTextEdit(this);
     consoleOutput_->setReadOnly(true);
@@ -93,6 +104,22 @@ void BuildRunDialog::onBrowse() {
                                                       projectDirEdit_->text());
     if (!dir.isEmpty()) {
         projectDirEdit_->setText(dir);
+        // Auto-update build directory if empty
+        if (buildDirEdit_->text().isEmpty()) {
+            buildDirEdit_->setPlaceholderText(dir + "/build");
+        }
+    }
+}
+
+void BuildRunDialog::onBrowseBuildDir() {
+    QString defaultDir = buildDirEdit_->text();
+    if (defaultDir.isEmpty() && !projectDirEdit_->text().isEmpty()) {
+        defaultDir = projectDirEdit_->text() + "/build";
+    }
+    
+    QString dir = QFileDialog::getExistingDirectory(this, "Select Build Directory", defaultDir);
+    if (!dir.isEmpty()) {
+        buildDirEdit_->setText(dir);
     }
 }
 
@@ -121,8 +148,12 @@ void BuildRunDialog::onBuild() {
     consoleOutput_->clear();
     appendOutput("Starting build process...\n");
     
-    // Create build directory if it doesn't exist
-    QString buildDir = projectDir + "/build";
+    // Determine build directory
+    QString buildDir = buildDirEdit_->text().trimmed();
+    if (buildDir.isEmpty()) {
+        // Default to projectDir/build
+        buildDir = projectDir + "/build";
+    }
     QDir().mkpath(buildDir);
     
     buildProcess_ = new QProcess(this);

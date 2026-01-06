@@ -1,0 +1,87 @@
+#include "OpticalSD.hh"
+#include "OpticalHit.hh"
+#include <G4SDManager.hh>
+#include <G4SystemOfUnits.hh>
+#include <G4Step.hh>
+#include <G4Track.hh>
+#include <G4VPhysicalVolume.hh>
+#include <G4VTouchable.hh>
+#include <G4TouchableHistory.hh>
+#include <G4OpticalPhoton.hh>
+
+OpticalSD::OpticalSD(const G4String& name, const G4String& hitsCollectionName)
+    : G4VSensitiveDetector(name)
+{
+    collectionName.insert(hitsCollectionName);
+}
+
+OpticalSD::~OpticalSD() {
+}
+
+void OpticalSD::Initialize(G4HCofThisEvent* hce) {
+    hitsCollection_ = new OpticalHitsCollection(SensitiveDetectorName, collectionName[0]);
+    
+    G4int hcID = G4SDManager::GetSDMpointer()->GetCollectionID(collectionName[0]);
+    hce->AddHitsCollection(hcID, hitsCollection_);
+}
+
+G4bool OpticalSD::ProcessHits(G4Step* step, G4TouchableHistory* history) {
+    G4Track* track = step->GetTrack();
+    
+    // Only process optical photons
+    if (track->GetDefinition() != G4OpticalPhoton::OpticalPhotonDefinition()) {
+        return false;
+    }
+    
+    OpticalHit* hit = new OpticalHit();
+    
+    G4StepPoint* prePoint = step->GetPreStepPoint();
+    G4StepPoint* postPoint = step->GetPostStepPoint();
+    
+    hit->SetTrackID(track->GetTrackID());
+    hit->SetParentID(track->GetParentID());
+    hit->SetPos(prePoint->GetPosition());
+    hit->SetMom(prePoint->GetMomentum());
+    hit->SetWavelength(GetWavelength(prePoint->GetMomentum()));
+    hit->SetTime(prePoint->GetGlobalTime());
+    hit->SetGlobalTime(prePoint->GetGlobalTime());
+    hit->SetLocalTime(prePoint->GetLocalTime());
+    hit->SetProperTime(prePoint->GetProperTime());
+    
+    // Check if photon is detected (e.g., absorbed or detected)
+    if (postPoint->GetStepStatus() == fGeomBoundary) {
+        hit->SetDetected(true);
+    }
+    
+    G4VPhysicalVolume* physVol = prePoint->GetPhysicalVolume();
+    if (physVol) {
+        hit->SetVolumeName(physVol->GetName());
+        hit->SetCopyNumber(physVol->GetCopyNo());
+    }
+    
+    hitsCollection_->insert(hit);
+    return true;
+}
+
+void OpticalSD::EndOfEvent(G4HCofThisEvent*) {
+    // ==== USER CODE BEGIN EndOfEvent
+    // Custom end-of-event processing here
+    // ==== USER CODE END EndOfEvent
+}
+
+// Helper function to calculate wavelength from momentum
+G4double OpticalSD::GetWavelength(const G4ThreeVector& momentum) const {
+    G4double p = momentum.mag();
+    if (p == 0.) return 0.;
+    
+    // E = hc/lambda, p = E/c for photons
+    // lambda = h/p = hc/E
+    const G4double h_Planck = 6.62607015e-34 * joule * second;
+    const G4double c_light = 299792458.0 * meter / second;
+    
+    G4double energy = p * c_light;
+    G4double wavelength = h_Planck * c_light / energy;
+    
+    return wavelength / nanometer; // Return in nm
+}
+

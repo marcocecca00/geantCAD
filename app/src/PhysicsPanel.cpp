@@ -55,7 +55,19 @@ void PhysicsPanel::setupUI() {
     groupLayout->addStretch();
     
     layout->addWidget(groupBox);
+    
+    // Preview
+    QGroupBox* previewGroup = new QGroupBox("Preview", this);
+    QVBoxLayout* previewLayout = new QVBoxLayout(previewGroup);
+    previewLabel_ = new QLabel(this);
+    previewLabel_->setWordWrap(true);
+    previewLabel_->setStyleSheet("padding: 8px; background-color: #252525; border-radius: 3px;");
+    previewLayout->addWidget(previewLabel_);
+    layout->addWidget(previewGroup);
+    
     layout->addStretch();
+    
+    updatePreview();
 }
 
 void PhysicsPanel::setConfig(const PhysicsConfig& config) {
@@ -81,11 +93,34 @@ PhysicsConfig PhysicsPanel::getConfig() const {
 }
 
 void PhysicsPanel::onCheckboxChanged() {
+    updatePreview();
     emit configChanged();
 }
 
 void PhysicsPanel::onStandardListChanged() {
+    updatePreview();
     emit configChanged();
+}
+
+void PhysicsPanel::updatePreview() {
+    PhysicsConfig config = getConfig();
+    
+    QStringList enabledPhysics;
+    if (config.emEnabled) enabledPhysics << "EM";
+    if (config.decayEnabled) enabledPhysics << "Decay";
+    if (config.opticalEnabled) enabledPhysics << "Optical";
+    if (config.hadronicEnabled) enabledPhysics << "Hadronic";
+    
+    QString preview = QString("Physics List: <b>%1</b><br>")
+                      .arg(QString::fromStdString(config.standardList));
+    
+    if (enabledPhysics.isEmpty()) {
+        preview += "No physics enabled";
+    } else {
+        preview += "Enabled: " + enabledPhysics.join(", ");
+    }
+    
+    previewLabel_->setText(preview);
 }
 
 } // namespace geantcad

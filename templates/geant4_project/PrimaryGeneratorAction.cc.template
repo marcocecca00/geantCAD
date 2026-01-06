@@ -1,0 +1,219 @@
+#include "PrimaryGeneratorAction.hh"
+#include <G4Event.hh>
+#include <G4ParticleTable.hh>
+#include <G4ParticleDefinition.hh>
+#include <G4SystemOfUnits.hh>
+#include <G4PhysicalVolumeStore.hh>
+#include <G4LogicalVolumeStore.hh>
+#include <G4VPhysicalVolume.hh>
+#include <G4LogicalVolume.hh>
+#include <G4VSolid.hh>
+#include <G4RandomDirection.hh>
+#include <G4UniformRand.hh>
+#include <G4RandGauss.hh>
+#include <cmath>
+
+PrimaryGeneratorAction::PrimaryGeneratorAction()
+    : energyMode_(0), energy_(1.0*MeV),
+      energyMin_(0.5*MeV), energyMax_(2.0*MeV),
+      energyMean_(1.0*MeV), energySigma_(0.1*MeV),
+      positionMode_(0), position_(0, 0, 0),
+      positionRadius_(10.0*mm),
+      directionMode_(0), direction_(0, 0, 1),
+      coneAngle_(30.0*degree),
+      numberOfParticles_(1)
+{
+    particleGun_ = new G4ParticleGun(numberOfParticles_);
+    
+    // Default: gamma
+    G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
+    G4ParticleDefinition* particle = particleTable->FindParticle("gamma");
+    particleGun_->SetParticleDefinition(particle);
+}
+
+PrimaryGeneratorAction::~PrimaryGeneratorAction() {
+    delete particleGun_;
+}
+
+void PrimaryGeneratorAction::GeneratePrimaries(G4Event* event) {
+    // Set particle type
+    G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
+    G4ParticleDefinition* particle = particleTable->FindParticle(particleGun_->GetParticleDefinition()->GetParticleName());
+    if (particle) {
+        particleGun_->SetParticleDefinition(particle);
+    }
+    
+    // Generate primaries
+    for (G4int i = 0; i < numberOfParticles_; ++i) {
+        // Set energy
+        G4double e = GenerateEnergy();
+        particleGun_->SetParticleEnergy(e);
+        
+        // Set position
+        G4ThreeVector pos = GeneratePosition();
+        particleGun_->SetParticlePosition(pos);
+        
+        // Set direction
+        G4ThreeVector dir = GenerateDirection();
+        particleGun_->SetParticleMomentumDirection(dir);
+        
+        // Generate primary
+        particleGun_->GeneratePrimaryVertex(event);
+    }
+}
+
+G4double PrimaryGeneratorAction::GenerateEnergy() {
+    switch (energyMode_) {
+        case 0: // Mono
+            return energy_;
+        case 1: // Uniform
+            return energyMin_ + G4UniformRand() * (energyMax_ - energyMin_);
+        case 2: // Gaussian
+            return G4RandGauss::shoot(energyMean_, energySigma_);
+        default:
+            return energy_;
+    }
+}
+
+G4ThreeVector PrimaryGeneratorAction::GeneratePosition() {
+    switch (positionMode_) {
+        case 0: // Point
+            return position_;
+        case 1: // Volume
+        case 2: // Surface
+            {
+                if (!positionVolume_.empty()) {
+                    // Try to find volume
+                    G4LogicalVolumeStore* lvs = G4LogicalVolumeStore::GetInstance();
+                    G4LogicalVolume* lv = lvs->GetVolume(positionVolume_, false);
+                    
+                    if (lv) {
+                        G4VSolid* solid = lv->GetSolid();
+                        if (solid) {
+                            // Generate random point in bounding box (simplified)
+                            // For full implementation, would use G4RandomPointInVolume
+                            G4ThreeVector bboxMin, bboxMax;
+                            solid->BoundingLimits(bboxMin, bboxMax);
+                            
+                            if (positionMode_ == 1) { // Volume
+                                return G4ThreeVector(
+                                    bboxMin.x() + G4UniformRand() * (bboxMax.x() - bboxMin.x()),
+                                    bboxMin.y() + G4UniformRand() * (bboxMax.y() - bboxMin.y()),
+                                    bboxMin.z() + G4UniformRand() * (bboxMax.z() - bboxMin.z())
+                                );
+                            } else { // Surface (simplified: random on bounding box surface)
+                                // This is a simplified implementation
+                                // Full implementation would sample actual surface
+                                return position_; // Fallback to point
+                            }
+                        }
+                    }
+                }
+                // Fallback: sphere around position
+                G4ThreeVector dir = G4RandomDirection();
+                G4double r = positionRadius_;
+                if (positionMode_ == 2) r = positionRadius_; // On surface
+                else r *= std::cbrt(G4UniformRand()); // In volume
+                return position_ + r * dir;
+            }
+        default:
+            return position_;
+    }
+}
+
+G4ThreeVector PrimaryGeneratorAction::GenerateDirection() {
+    switch (directionMode_) {
+        case 0: // Isotropic
+            return GenerateIsotropicDirection();
+        case 1: // Fixed
+            return direction_.unit();
+        case 2: // Cone
+            return GenerateConeDirection();
+        default:
+            return G4ThreeVector(0, 0, 1);
+    }
+}
+
+G4ThreeVector PrimaryGeneratorAction::GenerateIsotropicDirection() {
+    return G4RandomDirection();
+}
+
+G4ThreeVector PrimaryGeneratorAction::GenerateConeDirection() {
+    // Generate direction within cone around direction_
+    G4ThreeVector axis = direction_.unit();
+    
+    // Generate random angle within cone
+    G4double cosTheta = std::cos(coneAngle_);
+    G4double theta = std::acos(cosTheta + G4UniformRand() * (1.0 - cosTheta));
+    G4double phi = G4UniformRand() * 2.0 * M_PI;
+    
+    // Create perpendicular vector
+    G4ThreeVector perp;
+    if (std::abs(axis.z()) < 0.9) {
+        perp = G4ThreeVector(0, 0, 1).cross(axis).unit();
+    } else {
+        perp = G4ThreeVector(1, 0, 0).cross(axis).unit();
+    }
+    
+    G4ThreeVector perp2 = axis.cross(perp).unit();
+    
+    // Rotate around axis
+    G4ThreeVector dir = std::sin(theta) * (std::cos(phi) * perp + std::sin(phi) * perp2) + std::cos(theta) * axis;
+    
+    return dir.unit();
+}
+
+void PrimaryGeneratorAction::SetParticleType(const G4String& type) {
+    G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
+    G4ParticleDefinition* particle = particleTable->FindParticle(type);
+    if (particle) {
+        particleGun_->SetParticleDefinition(particle);
+    }
+}
+
+void PrimaryGeneratorAction::SetEnergyMode(G4int mode) {
+    energyMode_ = mode;
+}
+
+void PrimaryGeneratorAction::SetEnergy(G4double energy) {
+    energy_ = energy;
+}
+
+void PrimaryGeneratorAction::SetEnergyRange(G4double min, G4double max) {
+    energyMin_ = min;
+    energyMax_ = max;
+}
+
+void PrimaryGeneratorAction::SetEnergyGaussian(G4double mean, G4double sigma) {
+    energyMean_ = mean;
+    energySigma_ = sigma;
+}
+
+void PrimaryGeneratorAction::SetPositionMode(G4int mode) {
+    positionMode_ = mode;
+}
+
+void PrimaryGeneratorAction::SetPosition(G4double x, G4double y, G4double z) {
+    position_ = G4ThreeVector(x, y, z);
+}
+
+void PrimaryGeneratorAction::SetPositionVolume(const G4String& volumeName) {
+    positionVolume_ = volumeName;
+}
+
+void PrimaryGeneratorAction::SetPositionRadius(G4double radius) {
+    positionRadius_ = radius;
+}
+
+void PrimaryGeneratorAction::SetDirectionMode(G4int mode) {
+    directionMode_ = mode;
+}
+
+void PrimaryGeneratorAction::SetDirection(G4double x, G4double y, G4double z) {
+    direction_ = G4ThreeVector(x, y, z);
+}
+
+void PrimaryGeneratorAction::SetConeAngle(G4double angle) {
+    coneAngle_ = angle;
+}
+

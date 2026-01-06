@@ -224,7 +224,19 @@ void ParticleGunPanel::setupUI() {
     directionLayout->addRow("Cone Angle:", coneAngleSpin_);
     
     layout->addWidget(directionGroup_);
+    
+    // Preview
+    QGroupBox* previewGroup = new QGroupBox("Preview", this);
+    QVBoxLayout* previewLayout = new QVBoxLayout(previewGroup);
+    previewLabel_ = new QLabel(this);
+    previewLabel_->setWordWrap(true);
+    previewLabel_->setStyleSheet("padding: 8px; background-color: #252525; border-radius: 3px;");
+    previewLayout->addWidget(previewLabel_);
+    layout->addWidget(previewGroup);
+    
     layout->addStretch();
+    
+    updatePreview();
 }
 
 void ParticleGunPanel::updateUI() {
@@ -345,26 +357,91 @@ ParticleGunConfig ParticleGunPanel::getConfig() const {
 }
 
 void ParticleGunPanel::onParticleTypeChanged() {
+    updatePreview();
     emit configChanged();
 }
 
 void ParticleGunPanel::onEnergyModeChanged() {
     updateUI();
+    updatePreview();
     emit configChanged();
 }
 
 void ParticleGunPanel::onPositionModeChanged() {
     updateUI();
+    updatePreview();
     emit configChanged();
 }
 
 void ParticleGunPanel::onDirectionModeChanged() {
     updateUI();
+    updatePreview();
     emit configChanged();
 }
 
 void ParticleGunPanel::onValueChanged() {
+    updatePreview();
     emit configChanged();
+}
+
+void ParticleGunPanel::updatePreview() {
+    ParticleGunConfig config = getConfig();
+    
+    QString preview = QString("Particle: <b>%1</b> × %2<br>")
+                      .arg(QString::fromStdString(config.particleType))
+                      .arg(config.numberOfParticles);
+    
+    QString energyStr;
+    switch (config.energyMode) {
+        case ParticleGunConfig::EnergyMode::Mono:
+            energyStr = QString("%1 MeV").arg(config.energy);
+            break;
+        case ParticleGunConfig::EnergyMode::Uniform:
+            energyStr = QString("%1 - %2 MeV").arg(config.energyMin).arg(config.energyMax);
+            break;
+        case ParticleGunConfig::EnergyMode::Gaussian:
+            energyStr = QString("μ=%1, σ=%2 MeV").arg(config.energyMean).arg(config.energySigma);
+            break;
+    }
+    preview += QString("Energy: <b>%1</b><br>").arg(energyStr);
+    
+    QString positionStr;
+    switch (config.positionMode) {
+        case ParticleGunConfig::PositionMode::Point:
+            positionStr = QString("(%1, %2, %3) mm")
+                        .arg(config.positionX).arg(config.positionY).arg(config.positionZ);
+            break;
+        case ParticleGunConfig::PositionMode::Volume:
+            positionStr = QString("Volume: %1, r=%2 mm")
+                        .arg(QString::fromStdString(config.positionVolume))
+                        .arg(config.positionRadius);
+            break;
+        case ParticleGunConfig::PositionMode::Surface:
+            positionStr = QString("Surface: %1, r=%2 mm")
+                        .arg(QString::fromStdString(config.positionVolume))
+                        .arg(config.positionRadius);
+            break;
+    }
+    preview += QString("Position: <b>%1</b><br>").arg(positionStr);
+    
+    QString directionStr;
+    switch (config.directionMode) {
+        case ParticleGunConfig::DirectionMode::Isotropic:
+            directionStr = "Isotropic";
+            break;
+        case ParticleGunConfig::DirectionMode::Fixed:
+            directionStr = QString("(%1, %2, %3)")
+                          .arg(config.directionX).arg(config.directionY).arg(config.directionZ);
+            break;
+        case ParticleGunConfig::DirectionMode::Cone:
+            directionStr = QString("Cone: (%1, %2, %3), θ=%4°")
+                          .arg(config.directionX).arg(config.directionY).arg(config.directionZ)
+                          .arg(config.coneAngle);
+            break;
+    }
+    preview += QString("Direction: <b>%1</b>").arg(directionStr);
+    
+    previewLabel_->setText(preview);
 }
 
 } // namespace geantcad

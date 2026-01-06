@@ -10,6 +10,9 @@
 #include "CollapsibleGroupBox.hh"
 #include "../../core/include/VolumeNode.hh"
 #include "../../core/include/CommandStack.hh"
+#include "../../core/include/Material.hh"
+#include <QLabel>
+#include <memory>
 
 namespace geantcad {
 
@@ -40,6 +43,7 @@ private:
     void updateUI();
     void updateShapeUI();
     void hideAllShapeWidgets();
+    void updateMaterialColorPreview(std::shared_ptr<Material> material);
     
     VolumeNode* currentNode_;
     CommandStack* commandStack_ = nullptr;
@@ -53,6 +57,7 @@ private:
     
     // Material
     QComboBox* materialCombo_;
+    QLabel* materialColorPreview_;
     
     // Geometry (Shape Parameters)
     CollapsibleGroupBox* geometryGroup_;

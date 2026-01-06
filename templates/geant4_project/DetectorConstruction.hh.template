@@ -6,6 +6,9 @@
 
 class G4VPhysicalVolume;
 class G4LogicalVolume;
+class CalorimeterSD;
+class TrackerSD;
+class OpticalSD;
 
 class DetectorConstruction : public G4VUserDetectorConstruction {
 public:

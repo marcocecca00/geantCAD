@@ -1,0 +1,108 @@
+#include "OpticalHit.hh"
+#include <G4UnitsTable.hh>
+#include <G4VVisManager.hh>
+#include <G4Circle.hh>
+#include <G4Colour.hh>
+#include <G4VisAttributes.hh>
+
+G4ThreadLocal G4Allocator<OpticalHit>* OpticalHitAllocator = nullptr;
+
+OpticalHit::OpticalHit()
+    : trackID_(-1), parentID_(-1), wavelength_(0.), time_(0.),
+      globalTime_(0.), localTime_(0.), properTime_(0.), 
+      detected_(false), copyNumber_(-1)
+{
+}
+
+OpticalHit::~OpticalHit() {
+}
+
+OpticalHit::OpticalHit(const OpticalHit& right)
+    : G4VHit(right)
+{
+    trackID_ = right.trackID_;
+    parentID_ = right.parentID_;
+    pos_ = right.pos_;
+    mom_ = right.mom_;
+    wavelength_ = right.wavelength_;
+    time_ = right.time_;
+    globalTime_ = right.globalTime_;
+    localTime_ = right.localTime_;
+    properTime_ = right.properTime_;
+    detected_ = right.detected_;
+    volumeName_ = right.volumeName_;
+    copyNumber_ = right.copyNumber_;
+}
+
+const OpticalHit& OpticalHit::operator=(const OpticalHit& right) {
+    if (this != &right) {
+        trackID_ = right.trackID_;
+        parentID_ = right.parentID_;
+        pos_ = right.pos_;
+        mom_ = right.mom_;
+        wavelength_ = right.wavelength_;
+        time_ = right.time_;
+        globalTime_ = right.globalTime_;
+        localTime_ = right.localTime_;
+        properTime_ = right.properTime_;
+        detected_ = right.detected_;
+        volumeName_ = right.volumeName_;
+        copyNumber_ = right.copyNumber_;
+    }
+    return *this;
+}
+
+G4int OpticalHit::operator==(const OpticalHit& right) const {
+    return (this == &right) ? 1 : 0;
+}
+
+void OpticalHit::Draw() {
+    G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
+    if (pVVisManager) {
+        G4Circle circle(pos_);
+        circle.SetScreenSize(3.);
+        circle.SetFillStyle(G4Circle::filled);
+        // Color based on wavelength (visible spectrum)
+        G4Colour colour;
+        if (wavelength_ >= 380 && wavelength_ <= 750) {
+            // Visible spectrum: map wavelength to RGB
+            G4double r = 0., g = 0., b = 0.;
+            if (wavelength_ < 440) {
+                r = -(wavelength_ - 440) / (440 - 380);
+                b = 1.0;
+            } else if (wavelength_ < 490) {
+                g = (wavelength_ - 440) / (490 - 440);
+                b = 1.0;
+            } else if (wavelength_ < 580) {
+                g = 1.0;
+                b = -(wavelength_ - 580) / (580 - 490);
+            } else if (wavelength_ < 645) {
+                r = (wavelength_ - 580) / (645 - 580);
+                g = 1.0;
+            } else {
+                r = 1.0;
+                g = -(wavelength_ - 645) / (645 - 750);
+            }
+            colour = G4Colour(r, g, b);
+        } else {
+            colour = G4Colour(1., 1., 0.); // Yellow for non-visible
+        }
+        G4VisAttributes attribs(colour);
+        circle.SetVisAttributes(attribs);
+        pVVisManager->Draw(circle);
+    }
+}
+
+void OpticalHit::Print() {
+    G4cout << "OpticalHit: trackID=" << trackID_
+           << " parentID=" << parentID_
+           << " pos=" << G4BestUnit(pos_, "Length")
+           << " mom=" << G4BestUnit(mom_.mag(), "Energy")
+           << " wavelength=" << wavelength_ << " nm"
+           << " time=" << G4BestUnit(time_, "Time")
+           << " detected=" << (detected_ ? "yes" : "no")
+           << " volume=" << volumeName_
+           << " copyNo=" << copyNumber_
+           << G4endl;
+}
+

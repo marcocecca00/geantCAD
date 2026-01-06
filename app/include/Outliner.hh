@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QTreeWidget>
+#include <QContextMenuEvent>
 #include "../../core/include/SceneGraph.hh"
 
 namespace geantcad {
@@ -18,9 +19,17 @@ signals:
     void nodeSelected(VolumeNode* node);
     void nodeActivated(VolumeNode* node);
 
+protected:
+    void startDrag(Qt::DropActions supportedActions) override;
+    void dropEvent(QDropEvent* event) override;
+    bool dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData* data, Qt::DropAction action) override;
+    Qt::DropActions supportedDropActions() const override;
+
 private slots:
     void onItemSelectionChanged();
     void onItemActivated(QTreeWidgetItem* item, int column);
+    void onItemChanged(QTreeWidgetItem* item, int column);
+    void showContextMenu(const QPoint& pos);
 
 private:
     void buildTree();

@@ -23,6 +23,7 @@ public:
 
 private slots:
     void onBrowse();
+    void onBrowseBuildDir();
     void onBuild();
     void onRun();
     void onStop();
@@ -38,6 +39,8 @@ private:
     
     QLineEdit* projectDirEdit_;
     QPushButton* browseButton_;
+    QLineEdit* buildDirEdit_;
+    QPushButton* browseBuildDirButton_;
     QPushButton* buildButton_;
     QPushButton* runButton_;
     QPushButton* stopButton_;
