@@ -9,6 +9,7 @@
 #include <QMessageBox>
 #include <QMenuBar>
 #include <QMenu>
+#include <QActionGroup>
 #include <QFile>
 #include <QApplication>
 #include <QSettings>

@@ -320,7 +320,7 @@ void ViewCube::mouseReleaseEvent(QMouseEvent* event) {
     }
 }
 
-void ViewCube::enterEvent(QEvent* /*event*/) {
+void ViewCube::enterEvent(QEnterEvent* /*event*/) {
     update();
 }
 

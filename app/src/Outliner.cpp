@@ -277,7 +277,7 @@ bool Outliner::dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData*
 }
 
 void Outliner::dropEvent(QDropEvent* event) {
-    QTreeWidgetItem* item = itemAt(event->pos());
+    QTreeWidgetItem* item = itemAt(event->position().toPoint());
     
     if (item) {
         // Drop on item
