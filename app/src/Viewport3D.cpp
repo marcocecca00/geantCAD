@@ -378,8 +378,8 @@ void Viewport3D::createGrid() {
     // Add grid to renderer (at back)
     renderer_->AddActor(gridActor_);
     
-    // Axis length proportional to typical object size (50mm) - show +/- 200mm
-    const double axisLength = 200.0;
+    // Axis length - show +/- 300mm for better visibility
+    const double axisLength = 300.0;
     
     // Create X axis line (red)
     vtkSmartPointer<vtkLineSource> xAxisLine = vtkSmartPointer<vtkLineSource>::New();
@@ -498,6 +498,21 @@ void Viewport3D::resetView() {
         camera->SetViewUp(0, 0, 1);
         camera->SetViewAngle(30.0);
         renderWindow_->Render();
+    }
+#endif
+}
+
+void Viewport3D::zoom(double factor) {
+#ifdef GEANTCAD_NO_VTK
+    (void)factor;
+#else
+    if (renderer_ && renderWindow_) {
+        vtkCamera* camera = renderer_->GetActiveCamera();
+        if (camera) {
+            camera->Dolly(factor);
+            renderer_->ResetCameraClippingRange();
+            renderWindow_->Render();
+        }
     }
 #endif
 }
@@ -1577,8 +1592,8 @@ void Viewport3D::wheelEvent(QWheelEvent* event) {
         return;
     }
     
-    // Fast zoom - 20% per scroll step
-    double zoomFactor = 1.2;
+    // Smooth zoom - 10% per scroll step
+    double zoomFactor = 1.1;
     
     if (event->angleDelta().y() > 0) {
         // Zoom in - move camera closer

@@ -1,6 +1,7 @@
 #include "ViewCube.hh"
 #include <QPainterPath>
 #include <QFontMetrics>
+#include <QLineF>
 #include <cmath>
 #include <algorithm>
 
@@ -10,8 +11,8 @@ ViewCube::ViewCube(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedSize(100, 130);  // Extra space for axis indicator
-    setAttribute(Qt::WA_TranslucentBackground, true);  // Transparent background
+    setFixedSize(130, 160);  // More space: cube centered, controls below
+    setAttribute(Qt::WA_TranslucentBackground, true);
     
     // Colored faces like axis colors (more distinct)
     frontColor_ = QColor(80, 150, 80);    // Green (Y+)
@@ -26,6 +27,7 @@ ViewCube::ViewCube(QWidget* parent)
     
     // Initialize with isometric view orientation
     cameraOrientation_ = QQuaternion::fromEulerAngles(-30.0f, 45.0f, 0.0f);
+    cubeSize_ = 50.0f;  // Slightly larger cube
     updateFaces();
 }
 
@@ -220,10 +222,13 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
         }
     }
     
-    // Draw small axis indicator below the cube
-    float axisX = 20;
-    float axisY = height() - 25;
-    float axisLen = 15;
+    // === Bottom section: axis indicator on left, zoom buttons on right ===
+    float bottomY = height() - 35;
+    
+    // Small axis indicator (left side)
+    float axisX = 25;
+    float axisY = bottomY + 5;
+    float axisLen = 18;
     
     // Transform axes by camera orientation
     QVector3D xAxis = cameraOrientation_.rotatedVector(QVector3D(1, 0, 0));
@@ -231,35 +236,55 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
     QVector3D zAxis = cameraOrientation_.rotatedVector(QVector3D(0, 0, 1));
     
     // X axis (red)
-    painter.setPen(QPen(QColor(220, 80, 80), 2));
+    painter.setPen(QPen(QColor(230, 80, 80), 2.5));
     painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + xAxis.x() * axisLen, axisY - xAxis.y() * axisLen));
     
     // Y axis (green)
-    painter.setPen(QPen(QColor(80, 200, 80), 2));
+    painter.setPen(QPen(QColor(80, 210, 80), 2.5));
     painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + yAxis.x() * axisLen, axisY - yAxis.y() * axisLen));
     
     // Z axis (blue)
-    painter.setPen(QPen(QColor(80, 120, 220), 2));
+    painter.setPen(QPen(QColor(80, 130, 230), 2.5));
     painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + zAxis.x() * axisLen, axisY - zAxis.y() * axisLen));
-    
-    // Draw zoom/magnifier icon on the right side
-    float magX = width() - 25;
-    float magY = height() - 20;
-    painter.setPen(QPen(QColor(180, 180, 190), 1.5));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawEllipse(QPointF(magX - 3, magY - 3), 8, 8);  // Lens
-    painter.drawLine(QPointF(magX + 4, magY + 4), QPointF(magX + 10, magY + 10));  // Handle
     
     // Axis labels
     QFont smallFont("Segoe UI", 7);
     smallFont.setBold(true);
     painter.setFont(smallFont);
-    painter.setPen(QColor(220, 80, 80));
-    painter.drawText(QPointF(axisX + xAxis.x() * axisLen + 2, axisY - xAxis.y() * axisLen + 3), "X");
-    painter.setPen(QColor(80, 200, 80));
-    painter.drawText(QPointF(axisX + yAxis.x() * axisLen + 2, axisY - yAxis.y() * axisLen + 3), "Y");
-    painter.setPen(QColor(80, 120, 220));
-    painter.drawText(QPointF(axisX + zAxis.x() * axisLen + 2, axisY - zAxis.y() * axisLen + 3), "Z");
+    painter.setPen(QColor(230, 80, 80));
+    painter.drawText(QPointF(axisX + xAxis.x() * axisLen + 2, axisY - xAxis.y() * axisLen + 4), "X");
+    painter.setPen(QColor(80, 210, 80));
+    painter.drawText(QPointF(axisX + yAxis.x() * axisLen + 2, axisY - yAxis.y() * axisLen + 4), "Y");
+    painter.setPen(QColor(80, 130, 230));
+    painter.drawText(QPointF(axisX + zAxis.x() * axisLen + 2, axisY - zAxis.y() * axisLen + 4), "Z");
+    
+    // === Zoom buttons (right side) ===
+    float zoomBtnY = bottomY;
+    float zoomInX = width() - 55;
+    float zoomOutX = width() - 28;
+    float btnRadius = 10;
+    
+    // Store button positions for click handling
+    zoomInCenter_ = QPointF(zoomInX, zoomBtnY);
+    zoomOutCenter_ = QPointF(zoomOutX, zoomBtnY);
+    zoomBtnRadius_ = btnRadius;
+    
+    // Zoom In button (+)
+    QColor zoomInColor = zoomInHovered_ ? QColor(100, 180, 255) : QColor(70, 80, 95);
+    painter.setBrush(zoomInColor);
+    painter.setPen(QPen(QColor(120, 130, 150), 1.5));
+    painter.drawEllipse(QPointF(zoomInX, zoomBtnY), btnRadius, btnRadius);
+    painter.setPen(QPen(Qt::white, 2));
+    painter.drawLine(QPointF(zoomInX - 5, zoomBtnY), QPointF(zoomInX + 5, zoomBtnY));
+    painter.drawLine(QPointF(zoomInX, zoomBtnY - 5), QPointF(zoomInX, zoomBtnY + 5));
+    
+    // Zoom Out button (-)
+    QColor zoomOutColor = zoomOutHovered_ ? QColor(100, 180, 255) : QColor(70, 80, 95);
+    painter.setBrush(zoomOutColor);
+    painter.setPen(QPen(QColor(120, 130, 150), 1.5));
+    painter.drawEllipse(QPointF(zoomOutX, zoomBtnY), btnRadius, btnRadius);
+    painter.setPen(QPen(Qt::white, 2));
+    painter.drawLine(QPointF(zoomOutX - 5, zoomBtnY), QPointF(zoomOutX + 5, zoomBtnY));
 }
 
 void ViewCube::drawAxisIndicators(QPainter& painter) {
@@ -322,6 +347,22 @@ int ViewCube::hitTest(const QPoint& pos) const {
 
 void ViewCube::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
+        QPointF pos = event->pos();
+        
+        // Check zoom buttons first
+        double distToZoomIn = QLineF(pos, zoomInCenter_).length();
+        double distToZoomOut = QLineF(pos, zoomOutCenter_).length();
+        
+        if (distToZoomIn <= zoomBtnRadius_) {
+            emit zoomRequested(1.2);  // Zoom in 20%
+            return;
+        }
+        if (distToZoomOut <= zoomBtnRadius_) {
+            emit zoomRequested(0.8);  // Zoom out 20%
+            return;
+        }
+        
+        // Check cube faces
         int hit = hitTest(event->pos());
         if (hit >= 0) {
             applyViewOrientation(faces_[hit].orientation);
@@ -332,10 +373,25 @@ void ViewCube::mousePressEvent(QMouseEvent* event) {
 }
 
 void ViewCube::mouseMoveEvent(QMouseEvent* event) {
-    // Update hover state
+    QPointF pos = event->pos();
+    
+    // Update zoom button hover state
+    double distToZoomIn = QLineF(pos, zoomInCenter_).length();
+    double distToZoomOut = QLineF(pos, zoomOutCenter_).length();
+    bool wasZoomInHovered = zoomInHovered_;
+    bool wasZoomOutHovered = zoomOutHovered_;
+    zoomInHovered_ = (distToZoomIn <= zoomBtnRadius_);
+    zoomOutHovered_ = (distToZoomOut <= zoomBtnRadius_);
+    
+    // Update face hover state
     int hit = hitTest(event->pos());
     for (size_t i = 0; i < faces_.size(); ++i) {
         faces_[i].hovered = (static_cast<int>(i) == hit);
+    }
+    
+    // Repaint if hover changed
+    if (wasZoomInHovered != zoomInHovered_ || wasZoomOutHovered != zoomOutHovered_) {
+        update();
     }
     
     if (isDragging_ && (event->buttons() & Qt::LeftButton)) {

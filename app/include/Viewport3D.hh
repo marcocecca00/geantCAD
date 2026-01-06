@@ -78,6 +78,7 @@ public:
     // Camera controls
     void resetView();
     void frameSelection();
+    void zoom(double factor);  // 1.1 for zoom in, 0.9 for zoom out
     
     // Standard view presets (for view-cube)
     enum class StandardView {

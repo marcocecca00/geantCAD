@@ -170,7 +170,7 @@ void MainWindow::setupUI() {
     
     // Add ViewCube overlay in top-right corner
     viewCube_ = new ViewCube(viewport_);
-    viewCube_->setFixedSize(100, 100);
+    viewCube_->setFixedSize(130, 160);  // Match new ViewCube size
     viewCube_->setRenderer(viewport_->getRenderer());
     viewCube_->setCamera(viewport_->getCamera());
     viewCube_->show();
@@ -179,6 +179,12 @@ void MainWindow::setupUI() {
     // Connect ViewCube signals
     connect(viewCube_, &ViewCube::viewChanged, this, [this]() {
         viewport_->refresh();
+    });
+    
+    // Connect zoom buttons
+    connect(viewCube_, &ViewCube::zoomRequested, this, [this](double factor) {
+        viewport_->zoom(factor);
+        viewCube_->updateFromCamera();
     });
     
     connect(viewCube_, &ViewCube::viewOrientationRequested, this, [this](ViewCube::ViewOrientation orientation) {

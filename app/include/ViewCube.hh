@@ -53,6 +53,7 @@ public:
 signals:
     void viewOrientationRequested(ViewOrientation orientation);
     void viewChanged();
+    void zoomRequested(double factor);  // 1.1 for zoom in, 0.9 for zoom out
 
 public slots:
     void updateFromCamera();
@@ -93,8 +94,15 @@ private:
     bool isDragging_ = false;
     QPoint lastMousePos_;
     
+    // Zoom button state
+    QPointF zoomInCenter_;
+    QPointF zoomOutCenter_;
+    float zoomBtnRadius_ = 10.0f;
+    bool zoomInHovered_ = false;
+    bool zoomOutHovered_ = false;
+    
     // Visual settings
-    float cubeSize_ = 65.0f;  // Larger cube
+    float cubeSize_ = 50.0f;  // Cube size
     float perspective_ = 450.0f;
     
     // Modern dark theme colors (will be overridden in constructor)
