@@ -165,19 +165,19 @@ void Viewport3D::setupRenderer() {
     // Create manipulation gizmos
     createGizmos();
     
-    // Set up camera with better initial position - zoom into a smaller region on startup
-    // Position camera very close for viewing 50mm (5cm) objects comfortably
-    // Distance ~ 200mm from origin to see a 50mm object well framed
+    // Set up camera VERY close for viewing 50mm (5cm) objects
+    // Camera at ~170mm distance to fill view with 50mm object
     vtkCamera* camera = renderer_->GetActiveCamera();
-    camera->SetPosition(120, 120, 100);  // ~200mm from origin - good for 50mm objects
-    camera->SetFocalPoint(0, 0, 25);     // Focus slightly above origin
+    camera->SetPosition(100, 100, 80);   // Close isometric view
+    camera->SetFocalPoint(0, 0, 0);      // Look at origin
     camera->SetViewUp(0, 0, 1);
     
     // Configure camera for better interaction
     camera->SetClippingRange(0.1, 50000.0); // Wide clipping range
-    camera->SetViewAngle(60.0); // Wider field of view
+    camera->SetViewAngle(30.0); // Narrower FOV = more zoomed in
     
-    // Don't call ResetCamera() - keep the manual camera position for zoomed-in view
+    // Force the camera to use this exact position without auto-adjustment
+    camera->SetParallelScale(60.0); // For orthographic mode
 }
 
 void Viewport3D::setupInteractor() {
@@ -488,7 +488,12 @@ void Viewport3D::resetView() {
     (void)0; // No-op without VTK
 #else
     if (renderer_) {
-        renderer_->ResetCamera();
+        // Reset to our custom home view (close-up for 50mm objects)
+        vtkCamera* camera = renderer_->GetActiveCamera();
+        camera->SetPosition(100, 100, 80);
+        camera->SetFocalPoint(0, 0, 0);
+        camera->SetViewUp(0, 0, 1);
+        camera->SetViewAngle(30.0);
         renderWindow_->Render();
     }
 #endif
@@ -775,12 +780,10 @@ void Viewport3D::updateScene() {
     });
     
     // Don't reset camera during drag operations
-    if (!isDragging_) {
-        // Only reset if scene changed significantly
-        if (actors_.empty()) {
-            renderer_->ResetCamera();
-        }
-    }
+    // Don't auto-reset camera - user controls the view
+    // if (!isDragging_ && actors_.empty()) {
+    //     renderer_->ResetCamera();
+    // }
     
     // Preserve selection highlight after scene update
     if (sceneGraph_) {
