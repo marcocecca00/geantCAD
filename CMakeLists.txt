@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(GeantCAD VERSION 0.1.0 LANGUAGES C CXX)
+project(GeantCAD VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,15 +9,47 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(GEANTCAD_USE_ROOT "Enable ROOT support" OFF)
 option(GEANTCAD_BUILD_EXAMPLES "Build example projects" ON)
 option(GEANTCAD_BUILD_PYTHON_BINDINGS "Build Python bindings" ON)
+option(GEANTCAD_PREFER_QT6 "Prefer Qt6 over Qt5" ON)
 
-# Find dependencies
-# Note: Currently using Qt5 because VTK is typically compiled with Qt5
-# For Qt6 support, VTK must be recompiled with Qt6 enabled
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets OpenGL Gui)
-set(QT_VERSION_MAJOR 5)
-message(STATUS "Qt5 found: ${Qt5_VERSION}")
-message(STATUS "Note: For Qt6 support, VTK must be recompiled with Qt6 enabled")
+# ===== Qt Detection =====
+# Try to find Qt6 first if preferred, fall back to Qt5
+set(QT_FOUND FALSE)
 
+if(GEANTCAD_PREFER_QT6)
+    find_package(Qt6 QUIET COMPONENTS Core Widgets OpenGL Gui OpenGLWidgets)
+    if(Qt6_FOUND)
+        set(QT_VERSION_MAJOR 6)
+        set(QT_FOUND TRUE)
+        message(STATUS "Qt6 found: ${Qt6_VERSION}")
+        message(STATUS "Using Qt6 for modern UI features")
+        
+        # Qt6 requires OpenGLWidgets component
+        set(QT_LIBS Qt6::Core Qt6::Widgets Qt6::OpenGL Qt6::Gui Qt6::OpenGLWidgets)
+        set(QT_CORE_LIBS Qt6::Core Qt6::Gui)
+        
+        # Qt6 compatibility macros
+        add_definitions(-DQT_DISABLE_DEPRECATED_BEFORE=0x060000)
+    endif()
+endif()
+
+if(NOT QT_FOUND)
+    find_package(Qt5 QUIET COMPONENTS Core Widgets OpenGL Gui)
+    if(Qt5_FOUND)
+        set(QT_VERSION_MAJOR 5)
+        set(QT_FOUND TRUE)
+        message(STATUS "Qt5 found: ${Qt5_VERSION}")
+        message(STATUS "Note: For Qt6 support, set GEANTCAD_PREFER_QT6=ON and ensure Qt6 is installed")
+        
+        set(QT_LIBS Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::Gui)
+        set(QT_CORE_LIBS Qt5::Core Qt5::Gui)
+    endif()
+endif()
+
+if(NOT QT_FOUND)
+    message(FATAL_ERROR "Neither Qt6 nor Qt5 found. Please install Qt development packages.")
+endif()
+
+# ===== JSON Library =====
 find_package(nlohmann_json 3.2.0 QUIET)
 if(NOT nlohmann_json_FOUND)
     # Try to find it as a header-only library
@@ -33,6 +65,7 @@ if(NOT nlohmann_json_FOUND)
     endif()
 endif()
 
+# ===== ROOT (Optional) =====
 if(GEANTCAD_USE_ROOT)
     find_package(ROOT QUIET)
     if(ROOT_FOUND)
@@ -44,14 +77,14 @@ if(GEANTCAD_USE_ROOT)
     endif()
 endif()
 
-# Include directories
+# ===== Include directories =====
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/app/include
     ${CMAKE_CURRENT_SOURCE_DIR}/generator/include
 )
 
-# Core library (no GUI)
+# ===== Core library (no GUI) =====
 add_library(geantcad_core
     core/src/VolumeNode.cpp
     core/src/SceneGraph.cpp
@@ -66,21 +99,12 @@ add_library(geantcad_core
     core/src/ParticleGunConfig.cpp
 )
 
-if(QT_VERSION_MAJOR EQUAL 6)
 target_link_libraries(geantcad_core
-    Qt5::Core
-    Qt5::Gui
+    ${QT_CORE_LIBS}
     nlohmann_json::nlohmann_json
 )
-else()
-    target_link_libraries(geantcad_core
-        Qt5::Core
-        Qt5::Gui
-        nlohmann_json::nlohmann_json
-    )
-endif()
 
-# Generator library
+# ===== Generator library =====
 add_library(geantcad_generator
     generator/src/GDMLExporter.cpp
     generator/src/Geant4ProjectGenerator.cpp
@@ -91,12 +115,12 @@ target_link_libraries(geantcad_generator
     geantcad_core
 )
 
-# Enable Qt MOC
+# ===== Enable Qt MOC =====
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Main application
+# ===== Main application =====
 add_executable(geantcad
     app/src/main.cpp
     app/src/MainWindow.cpp
@@ -112,6 +136,14 @@ add_executable(geantcad
     app/src/PropertiesPanel.cpp
     app/src/SimulationConfigPanel.cpp
     app/src/CameraControlWidget.cpp
+    app/src/ProjectManagerPanel.cpp
+    app/src/RightPanelContainer.cpp
+    # New UI components
+    app/src/ViewCube.cpp
+    app/src/ClippingPlaneWidget.cpp
+    app/src/MeasurementTool.cpp
+    app/src/HistoryPanel.cpp
+    # Headers (for MOC)
     app/include/Toolbar.hh
     app/include/MainWindow.hh
     app/include/Viewport3D.hh
@@ -125,33 +157,31 @@ add_executable(geantcad
     app/include/PropertiesPanel.hh
     app/include/SimulationConfigPanel.hh
     app/include/CameraControlWidget.hh
+    app/include/ProjectManagerPanel.hh
+    app/include/RightPanelContainer.hh
+    # New headers
+    app/include/ViewCube.hh
+    app/include/ClippingPlaneWidget.hh
+    app/include/MeasurementTool.hh
+    app/include/HistoryPanel.hh
+    # Resources
     app/resources/resources.qrc
 )
 
-if(QT_VERSION_MAJOR EQUAL 6)
 target_link_libraries(geantcad
     geantcad_core
     geantcad_generator
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::OpenGL
+    ${QT_LIBS}
 )
-else()
-    target_link_libraries(geantcad
-        geantcad_core
-        geantcad_generator
-        Qt5::Core
-        Qt5::Widgets
-        Qt5::OpenGL
-    )
-endif()
 
-# VTK - try to find it with Qt support
+# ===== VTK Integration =====
+# Try to find VTK with Qt support
 find_package(VTK QUIET COMPONENTS 
     CommonCore
     CommonDataModel
     FiltersSources
     InteractionStyle
+    InteractionWidgets
     RenderingCore
     RenderingOpenGL2
     RenderingAnnotation
@@ -160,17 +190,32 @@ find_package(VTK QUIET COMPONENTS
 
 if(VTK_FOUND)
     if(TARGET VTK::GUISupportQt)
-        message(STATUS "VTK found: ${VTK_VERSION} (with Qt GUI support)")
+        message(STATUS "VTK found: ${VTK_VERSION} (with Qt${QT_VERSION_MAJOR} GUI support)")
+        
+        # Check VTK Qt version compatibility
+        get_target_property(VTK_QT_VERSION VTK::GUISupportQt INTERFACE_LINK_LIBRARIES)
+        string(FIND "${VTK_QT_VERSION}" "Qt${QT_VERSION_MAJOR}" VTK_QT_MATCH)
+        
+        if(VTK_QT_MATCH EQUAL -1)
+            message(WARNING "VTK may be compiled with a different Qt version. "
+                           "If you experience issues, recompile VTK with -DVTK_QT_VERSION=${QT_VERSION_MAJOR}")
+        endif()
         
         # Link VTK libraries
         target_link_libraries(geantcad 
             ${VTK_LIBRARIES}
             VTK::GUISupportQt
+            VTK::InteractionWidgets
         )
         target_include_directories(geantcad PRIVATE ${VTK_INCLUDE_DIRS})
         
-        # VTK is enabled
-        message(STATUS "VTK enabled - viewport will be available")
+        # Apply VTK module autoinit
+        vtk_module_autoinit(
+            TARGETS geantcad
+            MODULES ${VTK_LIBRARIES}
+        )
+        
+        message(STATUS "VTK enabled - full 3D viewport available")
     else()
         message(WARNING "VTK found but GUISupportQt not available. Viewport will be disabled.")
         add_definitions(-DGEANTCAD_NO_VTK)
@@ -180,10 +225,7 @@ else()
     add_definitions(-DGEANTCAD_NO_VTK)
 endif()
 
-# Qt5::Gui is needed for some VTK components
-target_link_libraries(geantcad Qt5::Gui)
-
-# Python bindings (optional)
+# ===== Python bindings (optional) =====
 if(GEANTCAD_BUILD_PYTHON_BINDINGS)
     find_package(pybind11 QUIET)
     if(NOT pybind11_FOUND)
@@ -222,7 +264,7 @@ if(GEANTCAD_BUILD_PYTHON_BINDINGS)
             pybind11::module
         )
         
-        # Set output name (remove .so extension on some systems)
+        # Set output name
         set_target_properties(geantcad_python PROPERTIES
             OUTPUT_NAME "geantcad_python"
             PREFIX ""
@@ -232,7 +274,16 @@ if(GEANTCAD_BUILD_PYTHON_BINDINGS)
     endif()
 endif()
 
-# Install
+# ===== Install =====
 install(TARGETS geantcad DESTINATION bin)
 install(DIRECTORY templates/ DESTINATION share/geantcad/templates)
 
+# ===== Summary =====
+message(STATUS "")
+message(STATUS "GeantCAD Build Configuration:")
+message(STATUS "  Version:      ${PROJECT_VERSION}")
+message(STATUS "  Qt Version:   ${QT_VERSION_MAJOR}")
+message(STATUS "  VTK Support:  ${VTK_FOUND}")
+message(STATUS "  ROOT Support: ${GEANTCAD_USE_ROOT}")
+message(STATUS "  Python:       ${GEANTCAD_BUILD_PYTHON_BINDINGS}")
+message(STATUS "")

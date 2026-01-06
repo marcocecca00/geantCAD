@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+
+# Build directories
+build/
+cmake-build-*/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files (avoid recursive copy)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation source (optional)
+# docs/
+
+# Example projects (optional)
+examples/
+
+# Test files
+tests/
+test_*/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.Python
+pip-log.txt
+
+# Coverage and testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Generated files that should be rebuilt
+*.o
+*.a
+*.so
+*.dylib
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+
