@@ -1071,6 +1071,32 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                 (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor
             );
             
+            // Apply axis constraint if gizmo axis was clicked
+            switch (constraintPlane_) {
+                case ConstraintPlane::AxisX:
+                    delta.setY(0); delta.setZ(0); // Only X movement
+                    break;
+                case ConstraintPlane::AxisY:
+                    delta.setX(0); delta.setZ(0); // Only Y movement
+                    break;
+                case ConstraintPlane::AxisZ:
+                    delta.setX(0); delta.setY(0); // Only Z movement
+                    break;
+                case ConstraintPlane::XY:
+                    delta.setZ(0); // XY plane movement
+                    break;
+                case ConstraintPlane::XZ:
+                    delta.setY(0); // XZ plane movement
+                    break;
+                case ConstraintPlane::YZ:
+                    delta.setX(0); // YZ plane movement
+                    break;
+                case ConstraintPlane::None:
+                default:
+                    // Free movement - no constraint
+                    break;
+            }
+            
             // Add delta to current position
             QVector3D currentPos = draggedNode_->getTransform().getTranslation();
             QVector3D newPos = currentPos + delta;
@@ -1093,11 +1119,22 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             newTransform.setTranslation(newPos);
             draggedNode_->getTransform() = newTransform;
             
-            // Display actual position values (same as Properties panel)
-            transformInfoText_ = QString("Position: (%1, %2, %3) mm")
+            // Display position with axis indicator
+            QString axisHint;
+            switch (constraintPlane_) {
+                case ConstraintPlane::AxisX: axisHint = " [X]"; break;
+                case ConstraintPlane::AxisY: axisHint = " [Y]"; break;
+                case ConstraintPlane::AxisZ: axisHint = " [Z]"; break;
+                case ConstraintPlane::XY: axisHint = " [XY]"; break;
+                case ConstraintPlane::XZ: axisHint = " [XZ]"; break;
+                case ConstraintPlane::YZ: axisHint = " [YZ]"; break;
+                default: axisHint = ""; break;
+            }
+            transformInfoText_ = QString("Position: (%1, %2, %3) mm%4")
                 .arg(newPos.x(), 0, 'f', 1)
                 .arg(newPos.y(), 0, 'f', 1)
-                .arg(newPos.z(), 0, 'f', 1);
+                .arg(newPos.z(), 0, 'f', 1)
+                .arg(axisHint);
             updateTransformTextOverlay(transformInfoText_);
             
             // Update last position for next frame
