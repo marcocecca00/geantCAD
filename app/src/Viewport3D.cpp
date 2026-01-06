@@ -134,7 +134,7 @@ Viewport3D::Viewport3D(QWidget* parent)
     , commandStack_(nullptr)
     , interactionMode_(InteractionMode::Select)
     , gridVisible_(true)  // Grid visible by default
-    , gridSpacing_(50.0)
+    , gridSpacing_(10.0)  // 10mm grid - 5 squares = 50mm (typical object size)
     , snapToGrid_(false)
 {
     setupRenderer();
@@ -166,15 +166,16 @@ void Viewport3D::setupRenderer() {
     createGizmos();
     
     // Set up camera with better initial position - zoom into a smaller region on startup
-    // Position camera closer for viewing 5cm x 5cm objects comfortably
+    // Position camera very close for viewing 50mm (5cm) objects comfortably
+    // Distance ~ 200mm from origin to see a 50mm object well framed
     vtkCamera* camera = renderer_->GetActiveCamera();
-    camera->SetPosition(80, 80, 80);  // Very close for small objects
-    camera->SetFocalPoint(0, 0, 0);
+    camera->SetPosition(120, 120, 100);  // ~200mm from origin - good for 50mm objects
+    camera->SetFocalPoint(0, 0, 25);     // Focus slightly above origin
     camera->SetViewUp(0, 0, 1);
     
     // Configure camera for better interaction
-    camera->SetClippingRange(0.1, 20000.0); // Wide clipping range
-    camera->SetViewAngle(50.0); // Wider field of view for better perspective
+    camera->SetClippingRange(0.1, 50000.0); // Wide clipping range
+    camera->SetViewAngle(60.0); // Wider field of view
     
     // Don't call ResetCamera() - keep the manual camera position for zoomed-in view
 }

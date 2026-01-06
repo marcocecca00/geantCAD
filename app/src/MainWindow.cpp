@@ -448,11 +448,11 @@ void MainWindow::setupMenus() {
     spacingGroup->setExclusive(true);
     
     QList<QPair<double, QString>> spacingOptions = {
-        {10.0, "10 mm (Fine)"},
+        {5.0, "5 mm (Very Fine)"},
+        {10.0, "10 mm (Default)"},
         {25.0, "25 mm"},
-        {50.0, "50 mm (Default)"},
-        {100.0, "100 mm"},
-        {250.0, "250 mm (Coarse)"}
+        {50.0, "50 mm"},
+        {100.0, "100 mm (Coarse)"}
     };
     
     for (const auto& option : spacingOptions) {
