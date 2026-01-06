@@ -658,19 +658,7 @@ void MainWindow::connectSignals() {
         statusBar_->showMessage("Created Trapezoid", 2000);
     });
     
-    // === Manipulation tools ===
-    connect(toolbar_, &Toolbar::toolSelect, this, [this]() {
-        statusBar_->showMessage("Select tool", 1000);
-    });
-    
-    connect(toolbar_, &Toolbar::toolMove, this, [this]() {
-        statusBar_->showMessage("Move tool", 1000);
-    });
-    
-    connect(toolbar_, &Toolbar::toolRotate, this, [this]() {
-        statusBar_->showMessage("Rotate tool", 1000);
-    });
-    
+    // === Edit actions ===
     connect(toolbar_, &Toolbar::deleteSelected, this, [this]() {
         VolumeNode* selected = sceneGraph_->getSelected();
         if (selected && selected != sceneGraph_->getRoot()) {
@@ -721,18 +709,22 @@ void MainWindow::connectSignals() {
     // Set command stack for viewport (for undo/redo of transforms)
     viewport_->setCommandStack(commandStack_);
     
-    // Toolbar tool changes -> update viewport mode
+    // Toolbar tool changes -> update viewport mode and show status
     connect(toolbar_, &Toolbar::toolSelect, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Select);
+        statusBar_->showMessage("Select tool - click to select objects", 2000);
     });
     connect(toolbar_, &Toolbar::toolMove, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Move);
+        statusBar_->showMessage("Move tool - use Properties panel to adjust position", 2000);
     });
     connect(toolbar_, &Toolbar::toolRotate, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Rotate);
+        statusBar_->showMessage("Rotate tool - use Properties panel to adjust rotation", 2000);
     });
     connect(toolbar_, &Toolbar::toolScale, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Scale);
+        statusBar_->showMessage("Scale tool - use Properties panel to adjust geometry", 2000);
     });
     
     // Viewport mode changes -> update toolbar
