@@ -1,6 +1,7 @@
 #include "Inspector.hh"
 #include "CollapsibleGroupBox.hh"
 #include "../../core/include/Material.hh"
+#include "../../core/include/NistMaterialDatabase.hh"
 #include "../../core/include/Shape.hh"
 #include "../../core/include/Command.hh"
 #include "../../core/include/VolumeNode.hh"
@@ -12,6 +13,8 @@
 #include <QSpinBox>
 #include <QFormLayout>
 #include <QColor>
+#include <QStandardItemModel>
+#include <QLineEdit>
 #include <cmath>
 
 namespace geantcad {
@@ -87,12 +90,35 @@ void Inspector::setupUI() {
     
     QHBoxLayout* materialRowLayout = new QHBoxLayout();
     materialCombo_ = new QComboBox(this);
+    materialCombo_->setMaxVisibleItems(20);
+    materialCombo_->setEditable(true);
+    materialCombo_->setInsertPolicy(QComboBox::NoInsert);
+    materialCombo_->lineEdit()->setPlaceholderText("Search materials...");
+    
+    // Populate with NIST materials by category
+    const auto& db = NistMaterialDatabase::instance();
+    for (auto category : NistMaterialDatabase::getAllCategories()) {
+        auto materials = db.getMaterialsByCategory(category);
+        if (materials.empty()) continue;
+        
+        // Add category separator
+        materialCombo_->addItem(QString("═══ %1 ═══").arg(QString::fromStdString(NistMaterialDatabase::getCategoryName(category))), "");
+        // Disable the separator item
+        auto* model = qobject_cast<QStandardItemModel*>(materialCombo_->model());
+        if (model) {
+            model->item(materialCombo_->count() - 1)->setEnabled(false);
+        }
+        
+        // Add materials in this category
+        for (const auto& mat : materials) {
+            QString displayText = QString("%1 (%2)")
+                .arg(QString::fromStdString(mat.displayName))
+                .arg(QString::fromStdString(mat.formula.empty() ? mat.nistName : mat.formula));
+            materialCombo_->addItem(displayText, QString::fromStdString(mat.nistName));
+        }
+    }
+    
     connect(materialCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Inspector::onMaterialChanged);
-    materialCombo_->addItem("Air", "G4_AIR");
-    materialCombo_->addItem("Water", "G4_WATER");
-    materialCombo_->addItem("Silicon", "G4_Si");
-    materialCombo_->addItem("Lead", "G4_Pb");
-    materialCombo_->addItem("Vacuum", "G4_Galactic");
     materialRowLayout->addWidget(materialCombo_);
     
     // Color preview

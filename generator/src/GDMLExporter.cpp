@@ -49,15 +49,41 @@ namespace {
         return str;
     }
     
-    // Write transform to GDML (position only for MVP)
+    // Check if rotation is non-identity (has significant rotation)
+    bool hasRotation(const Transform& transform) {
+        auto rot = transform.getRotation();
+        // QQuaternion identity is (1, 0, 0, 0) - scalar=1, vector=0
+        const float epsilon = 0.0001f;
+        return std::abs(rot.scalar() - 1.0f) > epsilon ||
+               std::abs(rot.x()) > epsilon ||
+               std::abs(rot.y()) > epsilon ||
+               std::abs(rot.z()) > epsilon;
+    }
+    
+    // Write transform to GDML (position + rotation)
     void writeTransform(std::ostream& os, const Transform& transform, const std::string& name) {
         auto pos = transform.getTranslation();
         std::string posName = sanitizeName(name) + "_pos";
+        
+        // Write position
         os << "  <position name=\"" << posName << "\" unit=\"cm\" "
            << "x=\"" << formatDouble(mmToCm(pos.x())) << "\" "
            << "y=\"" << formatDouble(mmToCm(pos.y())) << "\" "
            << "z=\"" << formatDouble(mmToCm(pos.z())) << "\"/>\n";
-        // TODO: Add rotation if needed
+        
+        // Write rotation if present (GDML uses degrees for angles)
+        if (hasRotation(transform)) {
+            auto rot = transform.getRotation();
+            // QQuaternion::toEulerAngles() returns (pitch, yaw, roll) in degrees
+            // GDML uses (x, y, z) rotation angles
+            QVector3D euler = rot.toEulerAngles();
+            std::string rotName = sanitizeName(name) + "_rot";
+            
+            os << "  <rotation name=\"" << rotName << "\" unit=\"deg\" "
+               << "x=\"" << formatDouble(euler.x()) << "\" "
+               << "y=\"" << formatDouble(euler.y()) << "\" "
+               << "z=\"" << formatDouble(euler.z()) << "\"/>\n";
+        }
     }
     
     // Write shape to GDML
@@ -233,13 +259,20 @@ namespace {
         for (auto* child : node->getChildren()) {
             std::string childName = sanitizeName(child->getName());
             std::string posName = childName + "_pos";
+            std::string rotName = childName + "_rot";
             
-            // Write position
+            // Write position (and rotation if present)
             writeTransform(os, child->getTransform(), childName);
             
             os << indentStr << "  <physvol>\n";
             os << indentStr << "    <volumeref ref=\"" << childName << "\"/>\n";
-            os << indentStr << "    <positionref ref=\"" << posName << "_pos\"/>\n";
+            os << indentStr << "    <positionref ref=\"" << posName << "\"/>\n";
+            
+            // Add rotation reference if rotation exists
+            if (hasRotation(child->getTransform())) {
+                os << indentStr << "    <rotationref ref=\"" << rotName << "\"/>\n";
+            }
+            
             os << indentStr << "  </physvol>\n";
         }
         
@@ -354,6 +387,12 @@ bool GDMLExporter::exportToFile(SceneGraph* sceneGraph, const std::string& fileP
                 file << "    <physvol>\n";
                 file << "      <volumeref ref=\"" << childName << "\"/>\n";
                 file << "      <positionref ref=\"" << childName << "_pos\"/>\n";
+                
+                // Add rotation reference if rotation exists
+                if (hasRotation(child->getTransform())) {
+                    file << "      <rotationref ref=\"" << childName << "_rot\"/>\n";
+                }
+                
                 file << "    </physvol>\n";
             }
             file << "  </volume>\n";

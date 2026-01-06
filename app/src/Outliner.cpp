@@ -19,7 +19,14 @@ Outliner::Outliner(QWidget* parent)
     , sceneGraph_(nullptr)
     , rootItem_(nullptr)
 {
-    setHeaderLabel("Scene");
+    // Set up columns: Name, Visibility
+    setColumnCount(2);
+    setHeaderLabels({"Scene", "👁"});
+    header()->setStretchLastSection(false);
+    header()->setSectionResizeMode(COL_NAME, QHeaderView::Stretch);
+    header()->setSectionResizeMode(COL_VISIBLE, QHeaderView::Fixed);
+    header()->resizeSection(COL_VISIBLE, 30);
+    
     setSelectionMode(QAbstractItemView::ExtendedSelection); // Allow multi-select
     setDragDropMode(QAbstractItemView::InternalMove); // Enable drag & drop
     setDefaultDropAction(Qt::MoveAction);
@@ -35,7 +42,7 @@ Outliner::Outliner(QWidget* parent)
     connect(this, &QTreeWidget::customContextMenuRequested, this, &Outliner::showContextMenu);
     connect(this, &QTreeWidget::itemChanged, this, &Outliner::onItemChanged);
     
-    // Enable inline editing
+    // Enable inline editing only for column 0 (name)
     setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
 }
 
@@ -65,55 +72,82 @@ void Outliner::buildTree() {
     expandAll();
 }
 
+namespace {
+    QString shapeTypeName(ShapeType type) {
+        switch (type) {
+            case ShapeType::Box: return "Box";
+            case ShapeType::Tube: return "Tube";
+            case ShapeType::Sphere: return "Sphere";
+            case ShapeType::Cone: return "Cone";
+            case ShapeType::Trd: return "Trapezoid";
+            case ShapeType::Polycone: return "Polycone";
+            case ShapeType::Polyhedra: return "Polyhedra";
+            default: return "Unknown";
+        }
+    }
+}
+
+QIcon Outliner::getShapeIcon(ShapeType type) const {
+    // Return appropriate icon based on shape type
+    // Using emoji-style representations that work well in dark themes
+    switch (type) {
+        case ShapeType::Box:
+            return style()->standardIcon(QStyle::SP_DialogSaveButton); // Box-like icon
+        case ShapeType::Tube:
+            return style()->standardIcon(QStyle::SP_DriveHDIcon);
+        case ShapeType::Sphere:
+            return style()->standardIcon(QStyle::SP_ComputerIcon);
+        case ShapeType::Cone:
+            return style()->standardIcon(QStyle::SP_ArrowUp);
+        case ShapeType::Trd:
+            return style()->standardIcon(QStyle::SP_TitleBarNormalButton);
+        case ShapeType::Polycone:
+            return style()->standardIcon(QStyle::SP_DriveNetIcon);
+        case ShapeType::Polyhedra:
+            return style()->standardIcon(QStyle::SP_DirIcon);
+        default:
+            return style()->standardIcon(QStyle::SP_FileIcon);
+    }
+}
+
 QTreeWidgetItem* Outliner::createTreeItem(VolumeNode* node) {
     if (!node) return nullptr;
     
     QTreeWidgetItem* item = new QTreeWidgetItem();
-    item->setText(0, QString::fromStdString(node->getName()));
-    item->setData(0, Qt::UserRole, QVariant::fromValue(node));
+    item->setText(COL_NAME, QString::fromStdString(node->getName()));
+    item->setData(COL_NAME, Qt::UserRole, QVariant::fromValue(node));
+    item->setFlags(item->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsEditable);
     
-    // Set icon based on shape type (FreeCAD/Blender style)
+    // Set visibility checkbox
+    item->setCheckState(COL_VISIBLE, node->isVisible() ? Qt::Checked : Qt::Unchecked);
+    item->setToolTip(COL_VISIBLE, "Toggle visibility");
+    
+    // Set icon based on shape type
     if (node->getShape()) {
-        QIcon icon;
-        // ShapeType is in geantcad namespace, not Shape::ShapeType
-        auto shapeType = node->getShape()->getType();
-        if (shapeType == geantcad::ShapeType::Box) {
-            icon = style()->standardIcon(QStyle::SP_FileIcon);
-        } else if (shapeType == geantcad::ShapeType::Tube) {
-            icon = style()->standardIcon(QStyle::SP_DirIcon);
-        } else if (shapeType == geantcad::ShapeType::Sphere) {
-            icon = style()->standardIcon(QStyle::SP_ComputerIcon);
-        } else if (shapeType == geantcad::ShapeType::Cone) {
-            icon = style()->standardIcon(QStyle::SP_DriveCDIcon);
-        } else if (shapeType == geantcad::ShapeType::Trd) {
-            icon = style()->standardIcon(QStyle::SP_FileDialogDetailedView);
-        } else {
-            icon = style()->standardIcon(QStyle::SP_FileIcon);
-        }
-        item->setIcon(0, icon);
+        item->setIcon(COL_NAME, getShapeIcon(node->getShape()->getType()));
+        
+        // Build tooltip with shape info
+        QString tooltip = QString("Shape: %1").arg(shapeTypeName(node->getShape()->getType()));
+        item->setToolTip(COL_NAME, tooltip);
     } else {
-        // Default icon for nodes without shape
-        item->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
+        // Default icon for nodes without shape (groups/containers)
+        item->setIcon(COL_NAME, style()->standardIcon(QStyle::SP_DirOpenIcon));
+        item->setToolTip(COL_NAME, "Container/Group");
     }
     
-    // Highlight sensitive detectors with special icon and color
+    // Highlight sensitive detectors with special color
     const auto& sdConfig = node->getSDConfig();
     if (sdConfig.enabled) {
-        // Add a second icon overlay or change text color
         QColor sdColor(0, 200, 255); // Cyan color for sensitive detectors
-        item->setForeground(0, QBrush(sdColor));
-        item->setToolTip(0, QString("Sensitive Detector: %1 (%2)")
+        item->setForeground(COL_NAME, QBrush(sdColor));
+        item->setToolTip(COL_NAME, QString("Sensitive Detector: %1 (%2)")
                         .arg(QString::fromStdString(sdConfig.type))
                         .arg(QString::fromStdString(sdConfig.collectionName)));
-        
-        // Optionally add a badge icon
-        QIcon sdIcon = style()->standardIcon(QStyle::SP_MessageBoxInformation);
-        // Combine shape icon with SD indicator
-        // For now, we'll just use the color to indicate SD
-    } else {
-        // Reset to default color
-        item->setForeground(0, QBrush());
-        item->setToolTip(0, "");
+    }
+    
+    // Visual feedback for hidden items
+    if (!node->isVisible()) {
+        item->setForeground(COL_NAME, QBrush(QColor(128, 128, 128))); // Gray for hidden
     }
     
     // Visual feedback: show if node has children
@@ -136,7 +170,7 @@ void Outliner::onItemSelectionChanged() {
     QList<QTreeWidgetItem*> selected = selectedItems();
     if (!selected.isEmpty()) {
         QTreeWidgetItem* item = selected.first();
-        VolumeNode* node = item->data(0, Qt::UserRole).value<VolumeNode*>();
+        VolumeNode* node = item->data(COL_NAME, Qt::UserRole).value<VolumeNode*>();
         if (node) {
             emit nodeSelected(node);
         }
@@ -147,40 +181,76 @@ void Outliner::onItemSelectionChanged() {
 
 void Outliner::onItemActivated(QTreeWidgetItem* item, int column) {
     Q_UNUSED(column)
-    VolumeNode* node = item->data(0, Qt::UserRole).value<VolumeNode*>();
+    VolumeNode* node = item->data(COL_NAME, Qt::UserRole).value<VolumeNode*>();
     if (node) {
         emit nodeActivated(node);
     }
 }
 
 void Outliner::onItemChanged(QTreeWidgetItem* item, int column) {
-    if (column != 0) return; // Only handle name changes
-    
-    VolumeNode* node = item->data(0, Qt::UserRole).value<VolumeNode*>();
+    VolumeNode* node = item->data(COL_NAME, Qt::UserRole).value<VolumeNode*>();
     if (!node) return;
     
-    QString newName = item->text(0).trimmed();
-    if (newName.isEmpty()) {
-        // Restore original name if empty
-        item->setText(0, QString::fromStdString(node->getName()));
-        return;
+    if (column == COL_NAME) {
+        // Handle name changes
+        QString newName = item->text(COL_NAME).trimmed();
+        if (newName.isEmpty()) {
+            // Restore original name if empty
+            item->setText(COL_NAME, QString::fromStdString(node->getName()));
+            return;
+        }
+        
+        // Update node name
+        node->setName(newName.toStdString());
+        
+        // Emit signal to notify other components
+        emit nodeSelected(node);
+    } else if (column == COL_VISIBLE) {
+        // Handle visibility changes
+        bool visible = (item->checkState(COL_VISIBLE) == Qt::Checked);
+        node->setVisible(visible);
+        
+        // Update item appearance
+        if (visible) {
+            // Restore normal color
+            const auto& sdConfig = node->getSDConfig();
+            if (sdConfig.enabled) {
+                item->setForeground(COL_NAME, QBrush(QColor(0, 200, 255)));
+            } else {
+                item->setForeground(COL_NAME, QBrush());
+            }
+        } else {
+            // Gray out hidden items
+            item->setForeground(COL_NAME, QBrush(QColor(128, 128, 128)));
+        }
+        
+        // Emit signal to update viewport
+        emit nodeVisibilityChanged(node, visible);
     }
-    
-    // Update node name
-    node->setName(newName.toStdString());
-    
-    // Emit signal to notify other components
-    emit nodeSelected(node);
 }
 
 void Outliner::showContextMenu(const QPoint& pos) {
     QTreeWidgetItem* item = itemAt(pos);
     if (!item) return;
     
-    VolumeNode* node = item->data(0, Qt::UserRole).value<VolumeNode*>();
+    VolumeNode* node = item->data(COL_NAME, Qt::UserRole).value<VolumeNode*>();
     if (!node) return;
     
     QMenu contextMenu(this);
+    
+    // Visibility toggle
+    bool isVisible = node->isVisible();
+    QAction* visibilityAction = contextMenu.addAction(
+        isVisible ? "Hide" : "Show",
+        [this, item, node, isVisible]() {
+            item->setCheckState(COL_VISIBLE, isVisible ? Qt::Unchecked : Qt::Checked);
+        }
+    );
+    visibilityAction->setIcon(style()->standardIcon(
+        isVisible ? QStyle::SP_DialogCloseButton : QStyle::SP_DialogApplyButton
+    ));
+    
+    contextMenu.addSeparator();
     
     QAction* deleteAction = contextMenu.addAction("Delete", [this, node]() {
         if (sceneGraph_) {
@@ -199,7 +269,7 @@ void Outliner::showContextMenu(const QPoint& pos) {
     contextMenu.addSeparator();
     
     QAction* renameAction = contextMenu.addAction("Rename", [this, item]() {
-        editItem(item, 0);
+        editItem(item, COL_NAME);
     });
     renameAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
     
@@ -210,7 +280,7 @@ void Outliner::startDrag(Qt::DropActions supportedActions) {
     QTreeWidgetItem* item = currentItem();
     if (!item) return;
     
-    VolumeNode* node = item->data(0, Qt::UserRole).value<VolumeNode*>();
+    VolumeNode* node = item->data(COL_NAME, Qt::UserRole).value<VolumeNode*>();
     if (!node || node == sceneGraph_->getRoot()) return; // Can't drag root
     
     QDrag* drag = new QDrag(this);
@@ -220,10 +290,10 @@ void Outliner::startDrag(Qt::DropActions supportedActions) {
     drag->setMimeData(mimeData);
     
     // Set drag icon
-    if (item->icon(0).isNull()) {
+    if (item->icon(COL_NAME).isNull()) {
         drag->setPixmap(style()->standardPixmap(QStyle::SP_FileIcon));
     } else {
-        drag->setPixmap(item->icon(0).pixmap(16, 16));
+        drag->setPixmap(item->icon(COL_NAME).pixmap(16, 16));
     }
     
     drag->exec(supportedActions);
@@ -234,6 +304,8 @@ Qt::DropActions Outliner::supportedDropActions() const {
 }
 
 bool Outliner::dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData* data, Qt::DropAction action) {
+    Q_UNUSED(index)
+    
     if (action != Qt::MoveAction || !data || !sceneGraph_) {
         return false;
     }
@@ -251,7 +323,7 @@ bool Outliner::dropMimeData(QTreeWidgetItem* parent, int index, const QMimeData*
     // Determine new parent
     VolumeNode* newParent = nullptr;
     if (parent) {
-        newParent = parent->data(0, Qt::UserRole).value<VolumeNode*>();
+        newParent = parent->data(COL_NAME, Qt::UserRole).value<VolumeNode*>();
     }
     
     // If no parent item, use root

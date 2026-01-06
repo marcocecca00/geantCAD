@@ -99,6 +99,18 @@ void BuildRunDialog::setProjectDirectory(const QString& dir) {
     projectDirEdit_->setText(dir);
 }
 
+void BuildRunDialog::setBuildDirectory(const QString& dir) {
+    buildDirEdit_->setText(dir);
+}
+
+QString BuildRunDialog::getProjectDirectory() const {
+    return projectDirEdit_->text();
+}
+
+QString BuildRunDialog::getBuildDirectory() const {
+    return buildDirEdit_->text();
+}
+
 void BuildRunDialog::onBrowse() {
     QString dir = QFileDialog::getExistingDirectory(this, "Select Geant4 Project Directory", 
                                                       projectDirEdit_->text());

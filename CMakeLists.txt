@@ -91,6 +91,7 @@ add_library(geantcad_core
     core/src/Transform.cpp
     core/src/Shape.cpp
     core/src/Material.cpp
+    core/src/NistMaterialDatabase.cpp
     core/src/Serialization.cpp
     core/src/CommandStack.cpp
     core/src/Command.cpp
@@ -109,11 +110,20 @@ add_library(geantcad_generator
     generator/src/GDMLExporter.cpp
     generator/src/Geant4ProjectGenerator.cpp
     generator/src/TemplateEngine.cpp
+    generator/src/MeshExporter.cpp
 )
 
 target_link_libraries(geantcad_generator
     geantcad_core
 )
+
+# Link VTK to generator if available (for mesh export)
+if(VTK_FOUND)
+    target_include_directories(geantcad_generator PRIVATE ${VTK_INCLUDE_DIRS})
+    target_link_libraries(geantcad_generator ${VTK_LIBRARIES})
+else()
+    target_compile_definitions(geantcad_generator PRIVATE GEANTCAD_NO_VTK)
+endif()
 
 # ===== Enable Qt MOC =====
 set(CMAKE_AUTOMOC ON)

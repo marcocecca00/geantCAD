@@ -496,6 +496,9 @@ void Viewport3D::updateScene() {
     sceneGraph_->traverse([this](VolumeNode* node) {
         if (!node || !node->getShape()) return;
         
+        // Skip hidden nodes
+        if (!node->isVisible()) return;
+        
         // Skip root/world node for now (or render it differently)
         if (node->getName() == "World") return;
         

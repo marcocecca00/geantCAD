@@ -103,12 +103,31 @@ nlohmann::json VolumeNode::toJson() const {
         j["material"] = material_->toJson();
     }
     
-    j["sdConfig"] = {
-        {"enabled", sdConfig_.enabled},
-        {"type", sdConfig_.type},
-        {"collectionName", sdConfig_.collectionName},
-        {"copyNumber", sdConfig_.copyNumber}
-    };
+    nlohmann::json sdJson;
+    sdJson["enabled"] = sdConfig_.enabled;
+    sdJson["type"] = sdConfig_.type;
+    sdJson["collectionName"] = sdConfig_.collectionName;
+    sdJson["copyNumber"] = sdConfig_.copyNumber;
+    sdJson["usesScoringMesh"] = sdConfig_.usesScoringMesh;
+    sdJson["meshSizeX"] = sdConfig_.meshSizeX;
+    sdJson["meshSizeY"] = sdConfig_.meshSizeY;
+    sdJson["meshSizeZ"] = sdConfig_.meshSizeZ;
+    sdJson["nBinsX"] = sdConfig_.nBinsX;
+    sdJson["nBinsY"] = sdConfig_.nBinsY;
+    sdJson["nBinsZ"] = sdConfig_.nBinsZ;
+    
+    nlohmann::json scorersJson = nlohmann::json::array();
+    for (const auto& scorer : sdConfig_.scorers) {
+        scorersJson.push_back({
+            {"name", scorer.name},
+            {"type", scorer.type},
+            {"particle_filter", scorer.particle_filter},
+            {"min_energy", scorer.min_energy},
+            {"max_energy", scorer.max_energy}
+        });
+    }
+    sdJson["scorers"] = scorersJson;
+    j["sdConfig"] = sdJson;
     
     j["opticalConfig"] = {
         {"enabled", opticalConfig_.enabled},
@@ -118,6 +137,8 @@ nlohmann::json VolumeNode::toJson() const {
         {"sigmaAlpha", opticalConfig_.sigmaAlpha},
         {"preset", opticalConfig_.preset}
     };
+    
+    j["visible"] = visible_;
     
     // Children
     nlohmann::json childrenJson = nlohmann::json::array();
@@ -151,6 +172,26 @@ std::unique_ptr<VolumeNode> VolumeNode::fromJson(const nlohmann::json& j) {
         node->sdConfig_.type = sd.value("type", "calorimeter");
         node->sdConfig_.collectionName = sd.value("collectionName", "");
         node->sdConfig_.copyNumber = sd.value("copyNumber", 0);
+        node->sdConfig_.usesScoringMesh = sd.value("usesScoringMesh", false);
+        node->sdConfig_.meshSizeX = sd.value("meshSizeX", 0.0);
+        node->sdConfig_.meshSizeY = sd.value("meshSizeY", 0.0);
+        node->sdConfig_.meshSizeZ = sd.value("meshSizeZ", 0.0);
+        node->sdConfig_.nBinsX = sd.value("nBinsX", 10);
+        node->sdConfig_.nBinsY = sd.value("nBinsY", 10);
+        node->sdConfig_.nBinsZ = sd.value("nBinsZ", 10);
+        
+        if (sd.contains("scorers")) {
+            node->sdConfig_.scorers.clear();
+            for (const auto& scorerJson : sd["scorers"]) {
+                ScorerConfig scorer;
+                scorer.name = scorerJson.value("name", "");
+                scorer.type = scorerJson.value("type", "energy_deposit");
+                scorer.particle_filter = scorerJson.value("particle_filter", "");
+                scorer.min_energy = scorerJson.value("min_energy", 0.0);
+                scorer.max_energy = scorerJson.value("max_energy", 0.0);
+                node->sdConfig_.scorers.push_back(scorer);
+            }
+        }
     }
     
     if (j.contains("opticalConfig")) {
@@ -162,6 +203,8 @@ std::unique_ptr<VolumeNode> VolumeNode::fromJson(const nlohmann::json& j) {
         node->opticalConfig_.sigmaAlpha = opt.value("sigmaAlpha", 0.0);
         node->opticalConfig_.preset = opt.value("preset", "");
     }
+    
+    node->visible_ = j.value("visible", true);
     
     // Children (recursive)
     if (j.contains("children")) {

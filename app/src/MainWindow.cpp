@@ -29,6 +29,7 @@
 #include "../../core/include/Command.hh"
 #include "../../generator/include/GDMLExporter.hh"
 #include "../../generator/include/Geant4ProjectGenerator.hh"
+#include "../../generator/include/MeshExporter.hh"
 #include "BuildRunDialog.hh"
 #include <QDir>
 #include <QGroupBox>
@@ -190,6 +191,50 @@ void MainWindow::setupMenus() {
     QAction* openAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon), "&Open...", this, [this]() { onOpen(); }, QKeySequence::Open);
     QAction* saveAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "&Save", this, [this]() { onSave(); }, QKeySequence::Save);
     QAction* saveAsAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Save &As...", this, [this]() { onSaveAs(); }, QKeySequence::SaveAs);
+    
+    fileMenu->addSeparator();
+    
+    // Export submenu
+    QMenu* exportMenu = fileMenu->addMenu("&Export");
+    
+    QAction* exportGDMLAction = exportMenu->addAction("Export to &GDML...", this, [this]() {
+        QString fileName = QFileDialog::getSaveFileName(this, "Export GDML", "", "GDML Files (*.gdml);;All Files (*)");
+        if (!fileName.isEmpty()) {
+            GDMLExporter exporter;
+            if (exporter.exportToFile(sceneGraph_, fileName.toStdString())) {
+                statusBar_->showMessage("Exported to GDML: " + fileName, 3000);
+            } else {
+                QMessageBox::warning(this, "Export Failed", "Failed to export GDML file.");
+            }
+        }
+    });
+    
+    QAction* exportSTLAction = exportMenu->addAction("Export to &STL...", this, [this]() {
+        QString fileName = QFileDialog::getSaveFileName(this, "Export STL", "", "STL Files (*.stl);;All Files (*)");
+        if (!fileName.isEmpty()) {
+            MeshExporter exporter;
+            if (exporter.exportToSTL(sceneGraph_, fileName.toStdString())) {
+                statusBar_->showMessage("Exported to STL: " + fileName, 3000);
+            } else {
+                QMessageBox::warning(this, "Export Failed", 
+                    QString("Failed to export STL file: %1").arg(QString::fromStdString(exporter.getLastError())));
+            }
+        }
+    });
+    
+    QAction* exportOBJAction = exportMenu->addAction("Export to &OBJ...", this, [this]() {
+        QString fileName = QFileDialog::getSaveFileName(this, "Export OBJ", "", "OBJ Files (*.obj);;All Files (*)");
+        if (!fileName.isEmpty()) {
+            MeshExporter exporter;
+            if (exporter.exportToOBJ(sceneGraph_, fileName.toStdString())) {
+                statusBar_->showMessage("Exported to OBJ: " + fileName, 3000);
+            } else {
+                QMessageBox::warning(this, "Export Failed", 
+                    QString("Failed to export OBJ file: %1").arg(QString::fromStdString(exporter.getLastError())));
+            }
+        }
+    });
+    
     fileMenu->addSeparator();
     QAction* exitAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DialogCloseButton), "E&xit", this, &QWidget::close, QKeySequence::Quit);
     
@@ -649,6 +694,13 @@ void MainWindow::connectSignals() {
         viewport_->refresh();
     });
     
+    // Visibility changes from outliner
+    connect(outliner_, &Outliner::nodeVisibilityChanged, this, [this](VolumeNode* node, bool visible) {
+        Q_UNUSED(node)
+        Q_UNUSED(visible)
+        viewport_->refresh(); // Refresh viewport to reflect visibility changes
+    });
+    
     // Inspector changes
     connect(inspector_, &Inspector::nodeChanged, this, [this](VolumeNode* node) {
         viewport_->refresh();
@@ -774,14 +826,30 @@ void MainWindow::onGenerate() {
 }
 
 void MainWindow::onBuildRun() {
-    // Get last generated project directory if available
-    QString lastDir = ""; // TODO: Store last generated directory
+    QSettings settings("GeantCAD", "GeantCAD");
+    QString lastProjectDir = settings.value("build/lastProjectDirectory").toString();
+    QString lastBuildDir = settings.value("build/lastBuildDirectory").toString();
     
     BuildRunDialog dialog(this);
-    if (!lastDir.isEmpty()) {
-        dialog.setProjectDirectory(lastDir);
+    if (!lastProjectDir.isEmpty()) {
+        dialog.setProjectDirectory(lastProjectDir);
     }
+    if (!lastBuildDir.isEmpty()) {
+        dialog.setBuildDirectory(lastBuildDir);
+    }
+    
     dialog.exec();
+    
+    // Always save directories after dialog closes (user may have changed them)
+    QString projectDir = dialog.getProjectDirectory();
+    QString buildDir = dialog.getBuildDirectory();
+    
+    if (!projectDir.isEmpty()) {
+        settings.setValue("build/lastProjectDirectory", projectDir);
+    }
+    if (!buildDir.isEmpty()) {
+        settings.setValue("build/lastBuildDirectory", buildDir);
+    }
 }
 
 // === View action slots ===

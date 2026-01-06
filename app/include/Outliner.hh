@@ -18,6 +18,7 @@ public:
 signals:
     void nodeSelected(VolumeNode* node);
     void nodeActivated(VolumeNode* node);
+    void nodeVisibilityChanged(VolumeNode* node, bool visible);
 
 protected:
     void startDrag(Qt::DropActions supportedActions) override;
@@ -34,11 +35,16 @@ private slots:
 private:
     void buildTree();
     QTreeWidgetItem* createTreeItem(VolumeNode* node);
+    QIcon getShapeIcon(ShapeType type) const;
     
     SceneGraph* sceneGraph_;
     QTreeWidgetItem* rootItem_;
     
     std::map<VolumeNode*, QTreeWidgetItem*> nodeToItem_;
+    
+    // Column indices
+    static const int COL_NAME = 0;
+    static const int COL_VISIBLE = 1;
 };
 
 } // namespace geantcad

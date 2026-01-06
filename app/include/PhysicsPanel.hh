@@ -6,6 +6,7 @@
 #include <QVBoxLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QDoubleSpinBox>
 #include "../../core/include/PhysicsConfig.hh"
 
 namespace geantcad {
@@ -25,18 +26,37 @@ signals:
 
 private slots:
     void onCheckboxChanged();
-    void onStandardListChanged();
+    void onComboChanged();
+    void onCutsChanged();
 
 private:
     void setupUI();
     void updatePreview();
+    void updateEnabledStates();
     
+    // Physics toggles
     QCheckBox* emCheckbox_;
     QCheckBox* decayCheckbox_;
     QCheckBox* opticalCheckbox_;
     QCheckBox* hadronicCheckbox_;
-    QComboBox* standardListCombo_;
+    QCheckBox* ionCheckbox_;
+    QCheckBox* radioactiveCheckbox_;
+    QCheckBox* stepLimiterCheckbox_;
+    
+    // Physics options
+    QComboBox* emOptionCombo_;
+    QComboBox* hadronicModelCombo_;
+    
+    // Production cuts
+    QDoubleSpinBox* gammaCutSpin_;
+    QDoubleSpinBox* electronCutSpin_;
+    QDoubleSpinBox* positronCutSpin_;
+    QDoubleSpinBox* protonCutSpin_;
+    
+    // Preview
     QLabel* previewLabel_;
+    
+    bool updating_;
 };
 
 } // namespace geantcad

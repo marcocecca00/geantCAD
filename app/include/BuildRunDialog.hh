@@ -20,6 +20,9 @@ public:
     ~BuildRunDialog();
     
     void setProjectDirectory(const QString& dir);
+    void setBuildDirectory(const QString& dir);
+    QString getProjectDirectory() const;
+    QString getBuildDirectory() const;
 
 private slots:
     void onBrowse();
