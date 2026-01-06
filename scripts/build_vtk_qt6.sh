@@ -23,6 +23,7 @@ echo "  - Install to $INSTALL_DIR"
 echo ""
 echo "Required packages:"
 echo "  sudo apt install qt6-base-dev libqt6opengl6-dev libqt6openglwidgets6"
+echo "  sudo apt install qt6-declarative-dev qml6-module-qtquick"
 echo "  sudo apt install cmake ninja-build build-essential"
 echo "  sudo apt install libgl1-mesa-dev libx11-dev"
 echo ""
@@ -66,6 +67,7 @@ cmake "../VTK-$VTK_VERSION" \
     -DVTK_QT_VERSION=6 \
     -DVTK_GROUP_ENABLE_Qt=YES \
     -DVTK_MODULE_ENABLE_VTK_GUISupportQt=YES \
+    -DVTK_MODULE_ENABLE_VTK_GUISupportQtQuick=YES \
     -DVTK_MODULE_ENABLE_VTK_RenderingQt=YES \
     -DVTK_BUILD_TESTING=OFF \
     -DVTK_BUILD_EXAMPLES=OFF \
