@@ -52,31 +52,66 @@
 // vtkVectorText requires FreeType - using cone markers instead
 #include <QMenu>
 
-// Custom interactor style that ONLY allows middle button for camera
-// Left button is completely ignored by VTK - handled by Qt mouse events
-class MiddleButtonOnlyInteractorStyle : public vtkInteractorStyleTrackballCamera {
+// Custom interactor style - Shapr3D/Fusion360 style:
+// - Left button: NEVER camera (handled by Qt for selection/manipulation)
+// - Middle button: Orbit camera
+// - Shift + Middle: Pan camera
+// - Right button: handled by Qt for context menu
+class Shapr3DInteractorStyle : public vtkInteractorStyleTrackballCamera {
 public:
-    static MiddleButtonOnlyInteractorStyle* New() {
-        return new MiddleButtonOnlyInteractorStyle();
+    static Shapr3DInteractorStyle* New() {
+        return new Shapr3DInteractorStyle();
     }
-    vtkTypeMacro(MiddleButtonOnlyInteractorStyle, vtkInteractorStyleTrackballCamera);
+    vtkTypeMacro(Shapr3DInteractorStyle, vtkInteractorStyleTrackballCamera);
     
-    // Block ALL left button events - we handle them in Qt
-    void OnLeftButtonDown() override { /* Do nothing */ }
-    void OnLeftButtonUp() override { /* Do nothing */ }
+    // Block ALL left button events
+    void OnLeftButtonDown() override { /* Handled by Qt */ }
+    void OnLeftButtonUp() override { /* Handled by Qt */ }
     
-    // Middle button uses default trackball camera behavior
+    // Middle button: Orbit or Pan (with Shift)
     void OnMiddleButtonDown() override {
-        // Rotate camera on middle button
-        this->StartRotate();
+        if (this->Interactor->GetShiftKey()) {
+            this->StartPan();  // Shift + Middle = Pan
+        } else {
+            this->StartRotate();  // Middle = Orbit
+        }
     }
     void OnMiddleButtonUp() override {
-        this->EndRotate();
+        if (this->State == VTKIS_PAN) {
+            this->EndPan();
+        } else {
+            this->EndRotate();
+        }
     }
     
-    // Right button - we handle in Qt for context menu
-    void OnRightButtonDown() override { /* Do nothing */ }
-    void OnRightButtonUp() override { /* Do nothing */ }
+    // Mouse move - handle pan vs rotate
+    void OnMouseMove() override {
+        if (this->State == VTKIS_PAN) {
+            this->Pan();
+        } else if (this->State == VTKIS_ROTATE) {
+            this->Rotate();
+        }
+    }
+    
+    // Right button - handled by Qt
+    void OnRightButtonDown() override { /* Handled by Qt */ }
+    void OnRightButtonUp() override { /* Handled by Qt */ }
+    
+    // Mouse wheel for zoom
+    void OnMouseWheelForward() override { this->Dolly(1.1); }
+    void OnMouseWheelBackward() override { this->Dolly(0.9); }
+    
+private:
+    void Dolly(double factor) {
+        vtkCamera* camera = this->GetCurrentRenderer()->GetActiveCamera();
+        if (camera->GetParallelProjection()) {
+            camera->SetParallelScale(camera->GetParallelScale() / factor);
+        } else {
+            camera->Dolly(factor);
+            this->GetCurrentRenderer()->ResetCameraClippingRange();
+        }
+        this->GetInteractor()->Render();
+    }
 };
 #include <QContextMenuEvent>
 #include <QColorDialog>
@@ -154,12 +189,15 @@ void Viewport3D::setupRenderer() {
 void Viewport3D::setupInteractor() {
     interactor_ = renderWindow_->GetInteractor();
     if (interactor_) {
-        // Use CUSTOM interactor style that ONLY allows middle button for camera
-        // Left button is completely blocked at VTK level
-        vtkSmartPointer<MiddleButtonOnlyInteractorStyle> style = 
-            vtkSmartPointer<MiddleButtonOnlyInteractorStyle>::New();
+        // Shapr3D/Fusion360 style camera controls:
+        // - Left: selection/manipulation (handled by Qt)
+        // - Middle: orbit
+        // - Shift+Middle: pan
+        vtkSmartPointer<Shapr3DInteractorStyle> style = 
+            vtkSmartPointer<Shapr3DInteractorStyle>::New();
         
         style->SetMotionFactor(1.0);
+        style->SetDefaultRenderer(renderer_);
         interactor_->SetInteractorStyle(style);
         
         // Disable automatic picking
@@ -1004,7 +1042,7 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
             return; // Block camera - we're manipulating
         }
         
-        // In Select mode, pick objects normally
+        // In Select mode, pick objects or deselect on empty click
         if (interactionMode_ == InteractionMode::Select && sceneGraph_) {
             vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
             picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
@@ -1022,9 +1060,15 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
             }
             
             if (pickedNode && pickedNode != sceneGraph_->getRoot()) {
+                // Clicked on an object - select it
                 sceneGraph_->setSelected(pickedNode);
                 updateSelectionHighlight(pickedNode);
                 emit selectionChanged(pickedNode);
+            } else {
+                // Clicked on empty space - DESELECT everything
+                sceneGraph_->clearSelection();
+                updateSelectionHighlight(nullptr);
+                emit selectionChanged(nullptr);
             }
         }
     }
