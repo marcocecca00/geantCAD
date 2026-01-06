@@ -38,6 +38,7 @@
 #include <vtkPolyData.h>
 #include <vtkPoints.h>
 #include <vtkCellArray.h>
+#include <vtkLine.h>
 #include <vtkCommand.h>
 #include <QMenu>
 #include <QContextMenuEvent>
@@ -92,6 +93,9 @@ void Viewport3D::setupRenderer() {
     
     setRenderWindow(renderWindow_);
     
+    // Create modern grid
+    createGrid();
+    
     // Set up camera with better initial position
     vtkCamera* camera = renderer_->GetActiveCamera();
     camera->SetPosition(200, 200, 200);
@@ -130,16 +134,194 @@ void Viewport3D::setupInteractor() {
 
 void Viewport3D::setGridVisible(bool visible) {
     gridVisible_ = visible;
-    // Grid is not rendered - kept for future use
+    updateGrid();
+    if (renderWindow_) {
+        renderWindow_->Render();
+    }
 }
 
 void Viewport3D::setGridSpacing(double spacing) {
     if (spacing <= 0.0) return;
     gridSpacing_ = spacing;
+    
+    // Recreate grid with new spacing
+    createGrid();
+    if (renderWindow_) {
+        renderWindow_->Render();
+    }
 }
 
 void Viewport3D::setSnapToGrid(bool enabled) {
     snapToGrid_ = enabled;
+}
+
+void Viewport3D::createGrid() {
+    if (!renderer_) return;
+    
+    // Remove existing grid actors
+    if (gridActor_) {
+        renderer_->RemoveActor(gridActor_);
+        gridActor_ = nullptr;
+    }
+    if (axisXActor_) {
+        renderer_->RemoveActor(axisXActor_);
+        axisXActor_ = nullptr;
+    }
+    if (axisYActor_) {
+        renderer_->RemoveActor(axisYActor_);
+        axisYActor_ = nullptr;
+    }
+    
+    // Grid parameters
+    const double gridSize = 500.0; // Total grid size (mm)
+    const int majorDivisions = static_cast<int>(gridSize / gridSpacing_);
+    const int minorSubdivisions = 5; // Minor lines between major lines
+    const double minorSpacing = gridSpacing_ / minorSubdivisions;
+    
+    // Create points and lines for the grid
+    vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+    vtkSmartPointer<vtkCellArray> majorLines = vtkSmartPointer<vtkCellArray>::New();
+    vtkSmartPointer<vtkCellArray> minorLines = vtkSmartPointer<vtkCellArray>::New();
+    
+    int pointId = 0;
+    
+    // Generate grid lines (XY plane at Z=0)
+    for (int i = -majorDivisions; i <= majorDivisions; ++i) {
+        double pos = i * gridSpacing_;
+        bool isMajor = true;
+        
+        // Add minor lines between major lines
+        for (int j = 0; j < minorSubdivisions && i < majorDivisions; ++j) {
+            double minorPos = pos + j * minorSpacing;
+            
+            // Skip the major line itself (j=0)
+            if (j == 0 && i != -majorDivisions) continue;
+            
+            // Lines parallel to Y axis
+            points->InsertNextPoint(minorPos, -gridSize, 0);
+            points->InsertNextPoint(minorPos, gridSize, 0);
+            
+            vtkSmartPointer<vtkLine> line1 = vtkSmartPointer<vtkLine>::New();
+            line1->GetPointIds()->SetId(0, pointId++);
+            line1->GetPointIds()->SetId(1, pointId++);
+            
+            if (j == 0) {
+                majorLines->InsertNextCell(line1);
+            } else {
+                minorLines->InsertNextCell(line1);
+            }
+            
+            // Lines parallel to X axis
+            points->InsertNextPoint(-gridSize, minorPos, 0);
+            points->InsertNextPoint(gridSize, minorPos, 0);
+            
+            vtkSmartPointer<vtkLine> line2 = vtkSmartPointer<vtkLine>::New();
+            line2->GetPointIds()->SetId(0, pointId++);
+            line2->GetPointIds()->SetId(1, pointId++);
+            
+            if (j == 0) {
+                majorLines->InsertNextCell(line2);
+            } else {
+                minorLines->InsertNextCell(line2);
+            }
+        }
+    }
+    
+    // Add the last major lines
+    double lastPos = majorDivisions * gridSpacing_;
+    // Y parallel at +gridSize
+    points->InsertNextPoint(lastPos, -gridSize, 0);
+    points->InsertNextPoint(lastPos, gridSize, 0);
+    vtkSmartPointer<vtkLine> lineY = vtkSmartPointer<vtkLine>::New();
+    lineY->GetPointIds()->SetId(0, pointId++);
+    lineY->GetPointIds()->SetId(1, pointId++);
+    majorLines->InsertNextCell(lineY);
+    
+    // X parallel at +gridSize
+    points->InsertNextPoint(-gridSize, lastPos, 0);
+    points->InsertNextPoint(gridSize, lastPos, 0);
+    vtkSmartPointer<vtkLine> lineX = vtkSmartPointer<vtkLine>::New();
+    lineX->GetPointIds()->SetId(0, pointId++);
+    lineX->GetPointIds()->SetId(1, pointId++);
+    majorLines->InsertNextCell(lineX);
+    
+    // Create polydata for major lines
+    vtkSmartPointer<vtkPolyData> majorPolyData = vtkSmartPointer<vtkPolyData>::New();
+    majorPolyData->SetPoints(points);
+    majorPolyData->SetLines(majorLines);
+    
+    // Append minor lines to same polydata (simpler)
+    vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
+    
+    // Create separate polydata for minor lines
+    vtkSmartPointer<vtkPolyData> minorPolyData = vtkSmartPointer<vtkPolyData>::New();
+    minorPolyData->SetPoints(points);
+    minorPolyData->SetLines(minorLines);
+    
+    appendFilter->AddInputData(majorPolyData);
+    appendFilter->AddInputData(minorPolyData);
+    appendFilter->Update();
+    
+    // Create mapper and actor for grid
+    vtkSmartPointer<vtkPolyDataMapper> gridMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    gridMapper->SetInputConnection(appendFilter->GetOutputPort());
+    
+    gridActor_ = vtkSmartPointer<vtkActor>::New();
+    gridActor_->SetMapper(gridMapper);
+    gridActor_->GetProperty()->SetColor(0.25, 0.25, 0.30); // Subtle gray-blue
+    gridActor_->GetProperty()->SetLineWidth(1.0);
+    gridActor_->GetProperty()->SetOpacity(0.4);
+    gridActor_->SetPickable(false); // Don't interfere with selection
+    
+    // Add grid to renderer (at back)
+    renderer_->AddActor(gridActor_);
+    
+    // Create X axis line (red)
+    vtkSmartPointer<vtkLineSource> xAxisLine = vtkSmartPointer<vtkLineSource>::New();
+    xAxisLine->SetPoint1(-gridSize, 0, 0);
+    xAxisLine->SetPoint2(gridSize, 0, 0);
+    
+    vtkSmartPointer<vtkPolyDataMapper> xMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    xMapper->SetInputConnection(xAxisLine->GetOutputPort());
+    
+    axisXActor_ = vtkSmartPointer<vtkActor>::New();
+    axisXActor_->SetMapper(xMapper);
+    axisXActor_->GetProperty()->SetColor(0.8, 0.2, 0.2); // Red
+    axisXActor_->GetProperty()->SetLineWidth(2.0);
+    axisXActor_->GetProperty()->SetOpacity(0.8);
+    axisXActor_->SetPickable(false);
+    renderer_->AddActor(axisXActor_);
+    
+    // Create Y axis line (green)
+    vtkSmartPointer<vtkLineSource> yAxisLine = vtkSmartPointer<vtkLineSource>::New();
+    yAxisLine->SetPoint1(0, -gridSize, 0);
+    yAxisLine->SetPoint2(0, gridSize, 0);
+    
+    vtkSmartPointer<vtkPolyDataMapper> yMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    yMapper->SetInputConnection(yAxisLine->GetOutputPort());
+    
+    axisYActor_ = vtkSmartPointer<vtkActor>::New();
+    axisYActor_->SetMapper(yMapper);
+    axisYActor_->GetProperty()->SetColor(0.2, 0.8, 0.2); // Green
+    axisYActor_->GetProperty()->SetLineWidth(2.0);
+    axisYActor_->GetProperty()->SetOpacity(0.8);
+    axisYActor_->SetPickable(false);
+    renderer_->AddActor(axisYActor_);
+    
+    // Apply visibility
+    updateGrid();
+}
+
+void Viewport3D::updateGrid() {
+    if (gridActor_) {
+        gridActor_->SetVisibility(gridVisible_);
+    }
+    if (axisXActor_) {
+        axisXActor_->SetVisibility(gridVisible_);
+    }
+    if (axisYActor_) {
+        axisYActor_->SetVisibility(gridVisible_);
+    }
 }
 #endif
 

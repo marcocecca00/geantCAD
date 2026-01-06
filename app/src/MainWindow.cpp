@@ -338,6 +338,49 @@ void MainWindow::setupMenus() {
         measurePanelAction->setChecked(measureDock_ && measureDock_->isVisible());
     });
     
+    viewMenu->addSeparator();
+    
+    // Grid controls
+    QAction* toggleGridAction = viewMenu->addAction("Show &Grid", this, [this]() { 
+        bool visible = viewport_->isGridVisible();
+        viewport_->setGridVisible(!visible);
+        statusBar_->showMessage(visible ? "Grid hidden" : "Grid shown", 1000);
+    }, QKeySequence("G"));
+    toggleGridAction->setCheckable(true);
+    toggleGridAction->setChecked(viewport_->isGridVisible());
+    
+    // Grid spacing submenu
+    QMenu* gridSpacingMenu = viewMenu->addMenu("Grid &Spacing");
+    QActionGroup* spacingGroup = new QActionGroup(this);
+    spacingGroup->setExclusive(true);
+    
+    QList<QPair<double, QString>> spacingOptions = {
+        {10.0, "10 mm (Fine)"},
+        {25.0, "25 mm"},
+        {50.0, "50 mm (Default)"},
+        {100.0, "100 mm"},
+        {250.0, "250 mm (Coarse)"}
+    };
+    
+    for (const auto& option : spacingOptions) {
+        QAction* spacingAction = gridSpacingMenu->addAction(option.second, this, [this, option]() {
+            viewport_->setGridSpacing(option.first);
+            statusBar_->showMessage(QString("Grid spacing: %1").arg(option.second), 1000);
+        });
+        spacingAction->setCheckable(true);
+        spacingGroup->addAction(spacingAction);
+        
+        // Check current spacing
+        if (std::abs(viewport_->getGridSpacing() - option.first) < 0.1) {
+            spacingAction->setChecked(true);
+        }
+    }
+    
+    // Update grid checkmark when menu shows
+    connect(viewMenu, &QMenu::aboutToShow, this, [=]() {
+        toggleGridAction->setChecked(viewport_->isGridVisible());
+    });
+    
     // Generate menu
     QMenu* generateMenu = menuBar->addMenu("&Generate");
     QAction* genAction = generateMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogNewFolder), "&Generate Geant4 Project...", this, [this]() { onGenerate(); });

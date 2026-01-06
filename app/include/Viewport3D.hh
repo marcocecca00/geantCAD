@@ -99,6 +99,8 @@ private:
     void setupInteractor();
     void updateScene();
     void setupViewCube();
+    void createGrid();
+    void updateGrid();
 #ifndef GEANTCAD_NO_VTK
     void updateSelectionHighlight(VolumeNode* selectedNode);
     void showContextMenu(const QPoint& pos);
@@ -116,8 +118,11 @@ private:
     // Actor storage (volume -> actor mapping)
     std::map<VolumeNode*, vtkSmartPointer<vtkActor>> actors_;
     
-    // Grid (not rendered, just for snap)
-    bool gridVisible_ = false;
+    // Grid
+    vtkSmartPointer<vtkActor> gridActor_;
+    vtkSmartPointer<vtkActor> axisXActor_;
+    vtkSmartPointer<vtkActor> axisYActor_;
+    bool gridVisible_ = true;  // Enabled by default
     double gridSpacing_ = 50.0; // mm
     bool snapToGrid_ = false;
     
