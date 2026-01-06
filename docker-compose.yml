@@ -1,0 +1,88 @@
+# GeantCAD Docker Compose Configuration
+# 
+# Usage:
+#   docker-compose up --build     # Build and run
+#   docker-compose run geantcad   # Run interactive shell
+#
+# For GUI access on Linux:
+#   xhost +local:docker
+#   docker-compose up
+#
+# For GUI access on macOS (requires XQuartz):
+#   export DISPLAY=host.docker.internal:0
+#   xhost +localhost
+#   docker-compose up
+
+version: '3.8'
+
+services:
+  geantcad:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: geantcad
+    
+    # X11 forwarding for GUI
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_INDIRECT=1
+    
+    volumes:
+      # X11 socket for GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      
+      # Mount source for development
+      - .:/workspace/geantcad:rw
+      
+      # Mount projects directory for persistence
+      - ./projects:/workspace/projects:rw
+      
+      # Mount generated Geant4 projects
+      - ./generated:/workspace/generated:rw
+    
+    # Allow GPU access
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, graphics, utility, compute]
+    
+    # Interactive terminal
+    stdin_open: true
+    tty: true
+    
+    # Network for potential future features
+    networks:
+      - geantcad-network
+
+  # Development service with source mounting
+  geantcad-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: geantcad-dev
+    
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+    
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - .:/workspace/geantcad:rw
+    
+    working_dir: /workspace/geantcad/build
+    
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    
+    networks:
+      - geantcad-network
+
+networks:
+  geantcad-network:
+    driver: bridge
+

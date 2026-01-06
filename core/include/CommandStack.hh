@@ -35,6 +35,11 @@ public:
     const std::string& getUndoDescription() const;
     const std::string& getRedoDescription() const;
     
+    // History access for HistoryPanel
+    const std::vector<std::unique_ptr<Command>>& getHistory() const { return history_; }
+    size_t getHistorySize() const { return history_.size(); }
+    int getCurrentIndex() const { return static_cast<int>(currentIndex_) - 1; }
+    
     // Signals
     std::function<void()> onHistoryChanged;
 

@@ -2,45 +2,146 @@
 
 ## Stato Attuale
 
-**Qt5 è ancora utilizzato** perché VTK è tipicamente compilato con Qt5.
+**Qt6 è ora supportato** tramite il flag CMake `GEANTCAD_PREFER_QT6=ON` (default).
 
-Per utilizzare Qt6 completamente, è necessario:
-1. Ricompilare VTK con Qt6 abilitato
-2. Aggiornare CMakeLists.txt per usare Qt6
+Il sistema rileva automaticamente Qt6 o Qt5 e configura le librerie appropriate.
 
-## Cambiamenti Preparati (non ancora applicati)
+## Configurazione CMake
 
-### CMakeLists.txt
-- `find_package(Qt5 ...)` → `find_package(Qt6 ...)`
-- `Qt5::Core` → `Qt6::Core`
-- `Qt5::Widgets` → `Qt6::Widgets`
-- `Qt5::OpenGL` → `Qt6::OpenGL`
-- `Qt5::Gui` → `Qt6::Gui`
+### Compilazione con Qt6 (Consigliato)
+
+```bash
+cmake .. -DGEANTCAD_PREFER_QT6=ON
+```
+
+### Compilazione con Qt5 (Fallback)
+
+```bash
+cmake .. -DGEANTCAD_PREFER_QT6=OFF
+```
+
+## Dipendenze Qt6
+
+Ubuntu 22.04+:
+```bash
+sudo apt install qt6-base-dev qt6-base-dev-tools libqt6opengl6-dev libqt6openglwidgets6 qt6-tools-dev
+```
+
+Fedora:
+```bash
+sudo dnf install qt6-qtbase-devel qt6-qttools-devel
+```
+
+## Cambiamenti API Rilevanti
+
+### Componenti Qt
+
+| Qt5 | Qt6 | Note |
+|-----|-----|------|
+| `Qt5::Core` | `Qt6::Core` | - |
+| `Qt5::Widgets` | `Qt6::Widgets` | - |
+| `Qt5::OpenGL` | `Qt6::OpenGL` | - |
+| `Qt5::Gui` | `Qt6::Gui` | - |
+| - | `Qt6::OpenGLWidgets` | **Nuovo in Qt6** |
+
+### API Deprecate/Rimosse
+
+| Qt5 | Qt6 | Migrazione |
+|-----|-----|-----------|
+| `QFontMetrics::width()` | `QFontMetrics::horizontalAdvance()` | Sostituire chiamate |
+| `QString::null` | `QString()` | Usare costruttore default |
+| `QDesktopWidget` | `QScreen` | Usare `QGuiApplication::screens()` |
+| `QTextStream::operator<<(const char*)` | Richiede `QString` | Cast esplicito |
+
+### QOverload per Signals/Slots
+
+```cpp
+// Funziona in Qt5 e Qt6
+connect(comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+        this, &MyClass::onIndexChanged);
+```
 
 ### QVTKOpenGLNativeWidget
-- In Qt6, `QVTKOpenGLNativeWidget` è disponibile tramite VTK::GUISupportQt
-- Nessun cambiamento necessario nel codice, VTK gestisce la compatibilità
 
-### QOverload
-- In Qt6, molti overload sono risolti automaticamente
-- `QOverload<int>::of(&QComboBox::currentIndexChanged)` può essere semplificato
-- Tuttavia, per compatibilità manteniamo QOverload dove necessario
+- In Qt6, richiede `Qt6::OpenGLWidgets`
+- VTK deve essere compilato con `VTK_QT_VERSION=6`
+- Nessun cambiamento nel codice C++ richiesto
 
-### Q_DECLARE_METATYPE e qRegisterMetaType
-- Funzionano identicamente in Qt6
-- Nessun cambiamento necessario
+## VTK e Qt6
 
-## Note
+### Requisiti
 
-- VTK 9.1+ supporta sia Qt5 che Qt6
-- QVTKOpenGLNativeWidget funziona con entrambe le versioni
-- La migrazione è principalmente un cambio di namespace Qt5:: → Qt6::
+Per usare VTK con Qt6, VTK deve essere compilato con:
+```
+-DVTK_QT_VERSION=6
+-DVTK_GROUP_ENABLE_Qt=YES
+```
 
-## Verifica
+### Verifica Compatibilità
 
-Dopo la migrazione, verificare:
-1. Compilazione senza errori
-2. Viewport3D funziona correttamente
-3. Tutti i segnali/slot funzionano
-4. Nessun crash all'avvio
+CMake verifica automaticamente la compatibilità VTK-Qt e mostra warning se rileva mismatch.
 
+### Build VTK Manuale per Qt6
+
+```bash
+git clone https://github.com/Kitware/VTK.git
+cd VTK && mkdir build && cd build
+
+cmake .. -GNinja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DVTK_QT_VERSION=6 \
+    -DVTK_GROUP_ENABLE_Qt=YES \
+    -DVTK_MODULE_ENABLE_VTK_GUISupportQt=YES \
+    -DVTK_BUILD_TESTING=OFF
+
+ninja && sudo ninja install
+```
+
+## Docker
+
+Il Dockerfile include opzione per build VTK con Qt6 (commentata di default poiché Ubuntu 22.04 ha VTK9 nei repo).
+
+## Checklist Migrazione
+
+### Completato
+- [x] CMakeLists.txt supporta Qt6 e Qt5
+- [x] Auto-detection versione Qt
+- [x] Componente OpenGLWidgets per Qt6
+- [x] Compatibility layer per API comuni
+
+### Verificare
+- [ ] `QFontMetrics::width()` → `horizontalAdvance()`
+- [ ] VTK compilato con Qt6 (se applicabile)
+- [ ] Test funzionale completo
+
+## Troubleshooting
+
+### Errore: Qt6 non trovato
+
+```
+Could not find Qt6
+```
+
+Soluzione: Installare Qt6 development packages o usare `-DGEANTCAD_PREFER_QT6=OFF`
+
+### Errore: VTK Qt version mismatch
+
+```
+VTK may be compiled with a different Qt version
+```
+
+Soluzione: Ricompilare VTK con `-DVTK_QT_VERSION=6` o usare Qt5
+
+### Errore: horizontalAdvance not found
+
+```
+'horizontalAdvance' is not a member of 'QFontMetrics'
+```
+
+Soluzione: Qt5 < 5.11 non ha questo metodo. Usare Qt5.15+ o aggiungere compat wrapper.
+
+## Riferimenti
+
+- [Qt5 to Qt6 Porting Guide](https://doc.qt.io/qt-6/portingguide.html)
+- [API Changes in Qt6](https://doc.qt.io/qt-6/qtcore-changes-qt6.html)
+- [VTK Qt Integration](https://vtk.org/doc/nightly/html/md__builds_gitlab_kitware_sciviz_ci_Documentation_Doxygen_QVTKOpenGLNativeWidget.html)
