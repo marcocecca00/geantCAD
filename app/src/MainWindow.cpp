@@ -31,6 +31,9 @@
 #include "../../generator/include/Geant4ProjectGenerator.hh"
 #include "../../generator/include/MeshExporter.hh"
 #include "BuildRunDialog.hh"
+#include "ThemeManager.hh"
+#include "PreferencesDialog.hh"
+#include "ShortcutsDialog.hh"
 #include <QDir>
 #include <QGroupBox>
 using namespace geantcad;
@@ -396,6 +399,34 @@ void MainWindow::setupMenus() {
     QMenu* generateMenu = menuBar->addMenu("&Generate");
     QAction* genAction = generateMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogNewFolder), "&Generate Geant4 Project...", this, [this]() { onGenerate(); });
     QAction* buildAction = generateMenu->addAction(style()->standardIcon(QStyle::SP_MediaPlay), "&Build & Run", this, [this]() { onBuildRun(); });
+    
+    // Edit menu
+    QMenu* editMenu = menuBar->addMenu("&Edit");
+    QAction* preferencesAction = editMenu->addAction("⚙️ &Preferences...", this, [this]() {
+        PreferencesDialog dialog(this);
+        connect(&dialog, &PreferencesDialog::settingsChanged, this, [this]() {
+            viewport_->refresh(); // Refresh viewport after settings change
+        });
+        dialog.exec();
+    }, QKeySequence("Ctrl+,"));
+    
+    // Help menu
+    QMenu* helpMenu = menuBar->addMenu("&Help");
+    QAction* shortcutsAction = helpMenu->addAction("⌨️ &Keyboard Shortcuts...", this, [this]() {
+        ShortcutsDialog dialog(this);
+        dialog.exec();
+    }, QKeySequence("Ctrl+/"));
+    
+    helpMenu->addSeparator();
+    
+    QAction* aboutAction = helpMenu->addAction("ℹ️ &About GeantCAD", this, [this]() {
+        QMessageBox::about(this, "About GeantCAD",
+            "<h2>GeantCAD v0.2.0</h2>"
+            "<p>A modern CAD-like editor for Geant4 geometries.</p>"
+            "<p>Built with Qt6 + VTK</p>"
+            "<p><a href='https://github.com/marcocecca00/geantCAD'>GitHub Repository</a></p>"
+            "<p>© 2024 Marco Cecca</p>");
+    });
 }
 
 void MainWindow::setupToolbars() {
@@ -943,37 +974,13 @@ void MainWindow::onRedo() {
 }
 
 void MainWindow::applyStylesheet() {
-    // Try to load from resources first
-    QFile styleFile(":/stylesheets/modern-dark.qss");
-    if (styleFile.open(QFile::ReadOnly)) {
-        QString style = QLatin1String(styleFile.readAll());
-        qApp->setStyleSheet(style);
-        return;
-    }
+    // Load theme from settings
+    QSettings settings("GeantCAD", "GeantCAD");
+    int themeIndex = settings.value("appearance/theme", 0).toInt();
+    ThemeManager::Theme theme = static_cast<ThemeManager::Theme>(themeIndex);
     
-    // Fallback: try to load from file system (relative to executable or source)
-    QStringList paths = {
-        "app/resources/stylesheets/modern-dark.qss",
-        "../app/resources/stylesheets/modern-dark.qss",
-        "../../app/resources/stylesheets/modern-dark.qss",
-        QApplication::applicationDirPath() + "/../app/resources/stylesheets/modern-dark.qss"
-    };
-    
-    for (const QString& path : paths) {
-        QFile fallbackFile(path);
-        if (fallbackFile.open(QFile::ReadOnly)) {
-            QString style = QLatin1String(fallbackFile.readAll());
-            qApp->setStyleSheet(style);
-            return;
-        }
-    }
-    
-    // If all else fails, use inline minimal style
-    qApp->setStyleSheet(
-        "QMainWindow { background-color: #1e1e1e; color: #e0e0e0; }"
-        "QPushButton { background-color: #2b2b2b; border: 1px solid #404040; border-radius: 4px; padding: 6px 12px; color: #e0e0e0; }"
-        "QPushButton:hover { background-color: #3a3a3a; }"
-    );
+    // Apply theme using ThemeManager
+    ThemeManager::applyTheme(theme);
 }
 
 void MainWindow::loadPreferences() {

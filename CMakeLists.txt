@@ -153,6 +153,9 @@ add_executable(geantcad
     app/src/ClippingPlaneWidget.cpp
     app/src/MeasurementTool.cpp
     app/src/HistoryPanel.cpp
+    app/src/ThemeManager.cpp
+    app/src/PreferencesDialog.cpp
+    app/src/ShortcutsDialog.cpp
     # Headers (for MOC)
     app/include/Toolbar.hh
     app/include/MainWindow.hh
@@ -174,6 +177,9 @@ add_executable(geantcad
     app/include/ClippingPlaneWidget.hh
     app/include/MeasurementTool.hh
     app/include/HistoryPanel.hh
+    app/include/ThemeManager.hh
+    app/include/PreferencesDialog.hh
+    app/include/ShortcutsDialog.hh
     # Resources
     app/resources/resources.qrc
 )

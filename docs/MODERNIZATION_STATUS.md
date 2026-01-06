@@ -69,14 +69,19 @@
 - ✅ Scoring mesh opzionale con bins configurabili
 - ✅ Serializzazione completa in JSON
 
+### 12. UI/UX Improvements
+- ✅ ThemeManager class con Dark/Light/System themes
+- ✅ Palette professionale (VS Code/JetBrains inspired)
+- ✅ Stylesheet completo per tutti i widget Qt
+- ✅ PreferencesDialog con tabs per Appearance/Viewport/Grid/Geant4
+- ✅ ShortcutsDialog con lista completa shortcut + ricerca
+- ✅ Menu Edit → Preferences (Ctrl+,)
+- ✅ Menu Help → Keyboard Shortcuts (Ctrl+/)
+- ✅ Menu Help → About GeantCAD
+
 ## 🔄 In Corso / Prossimi Passi
 
-### 1. UI Refinements
-- ⏳ Dark Theme migliorato per nuovi widget
-- ⏳ Animazioni transizione pannelli
-- ⏳ Keyboard shortcuts cheatsheet
-
-### 2. Generazione Codice Geant4
+### 1. Generazione Codice Geant4
 - ⏳ DetectorConstruction con SD e scorers
 - ⏳ PhysicsList con tutte le opzioni
 - ⏳ ActionInitialization completo
