@@ -48,8 +48,36 @@
 #include <vtkDiskSource.h>
 #include <vtkTubeFilter.h>
 #include <vtkRegularPolygonSource.h>
+#include <vtkInteractorStyleTrackballCamera.h>
 // vtkVectorText requires FreeType - using cone markers instead
 #include <QMenu>
+
+// Custom interactor style that ONLY allows middle button for camera
+// Left button is completely ignored by VTK - handled by Qt mouse events
+class MiddleButtonOnlyInteractorStyle : public vtkInteractorStyleTrackballCamera {
+public:
+    static MiddleButtonOnlyInteractorStyle* New() {
+        return new MiddleButtonOnlyInteractorStyle();
+    }
+    vtkTypeMacro(MiddleButtonOnlyInteractorStyle, vtkInteractorStyleTrackballCamera);
+    
+    // Block ALL left button events - we handle them in Qt
+    void OnLeftButtonDown() override { /* Do nothing */ }
+    void OnLeftButtonUp() override { /* Do nothing */ }
+    
+    // Middle button uses default trackball camera behavior
+    void OnMiddleButtonDown() override {
+        // Rotate camera on middle button
+        this->StartRotate();
+    }
+    void OnMiddleButtonUp() override {
+        this->EndRotate();
+    }
+    
+    // Right button - we handle in Qt for context menu
+    void OnRightButtonDown() override { /* Do nothing */ }
+    void OnRightButtonUp() override { /* Do nothing */ }
+};
 #include <QContextMenuEvent>
 #include <QColorDialog>
 #include <QCoreApplication>
@@ -126,23 +154,17 @@ void Viewport3D::setupRenderer() {
 void Viewport3D::setupInteractor() {
     interactor_ = renderWindow_->GetInteractor();
     if (interactor_) {
-        // Use custom interactor style that handles picking properly
-        // For now, use standard trackball camera - picking will be handled separately
-        vtkSmartPointer<vtkInteractorStyleTrackballCamera> style = 
-            vtkSmartPointer<vtkInteractorStyleTrackballCamera>::New();
+        // Use CUSTOM interactor style that ONLY allows middle button for camera
+        // Left button is completely blocked at VTK level
+        vtkSmartPointer<MiddleButtonOnlyInteractorStyle> style = 
+            vtkSmartPointer<MiddleButtonOnlyInteractorStyle>::New();
         
-        // Configure interaction settings for better control
-        // Note: VTK 9.1 doesn't have SetRotationFactor/SetTranslationFactor
-        // SetMotionFactor controls general motion sensitivity (default is 1.0)
         style->SetMotionFactor(1.0);
-        
         interactor_->SetInteractorStyle(style);
         
-        // Disable automatic picking by interactor to avoid conflicts
+        // Disable automatic picking
         interactor_->SetPicker(nullptr);
-        
-        // Enable continuous rendering for smoother interaction
-        interactor_->SetDesiredUpdateRate(30.0); // 30 FPS
+        interactor_->SetDesiredUpdateRate(30.0);
     }
 }
 
@@ -967,18 +989,19 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                 }
             }
             
-            // Start dragging if we clicked on the selected object OR on gizmo
-            if (pickedNode == selected || pickedNode == nullptr) {
-                // Set to free movement if no axis constraint was set
-                if (activeGizmoAxis_ < 0) {
-                    setConstraintPlane(ConstraintPlane::None);
-                }
-                isDragging_ = true;
-                draggedNode_ = selected;
-                dragStartTransform_ = selected->getTransform();
-                dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
-                return; // Block camera - we're manipulating
+            // In manipulation mode with selection: ALWAYS allow dragging
+            // - Click on selected object = move that object
+            // - Click on empty space = also move selected object (free transform)
+            // - Click on different object = still move selected (don't change selection in manipulation mode)
+            // Set to free movement (no constraint)
+            if (activeGizmoAxis_ < 0) {
+                setConstraintPlane(ConstraintPlane::None);
             }
+            isDragging_ = true;
+            draggedNode_ = selected;
+            dragStartTransform_ = selected->getTransform();
+            dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
+            return; // Block camera - we're manipulating
         }
         
         // In Select mode, pick objects normally
@@ -1729,19 +1752,19 @@ void Viewport3D::createGizmos() {
         planeSource->SetXResolution(1);
         planeSource->SetYResolution(1);
         
-        // Position at corner between two axes - LARGER and more visible
+        // Position planes OUTSIDE the arrows - much further from center
         if (strcmp(plane, "XY") == 0) {
-            planeSource->SetOrigin(0.25, 0.25, 0);
-            planeSource->SetPoint1(0.65, 0.25, 0);
-            planeSource->SetPoint2(0.25, 0.65, 0);
+            planeSource->SetOrigin(0.4, 0.4, 0);
+            planeSource->SetPoint1(0.85, 0.4, 0);
+            planeSource->SetPoint2(0.4, 0.85, 0);
         } else if (strcmp(plane, "XZ") == 0) {
-            planeSource->SetOrigin(0.25, 0, 0.25);
-            planeSource->SetPoint1(0.65, 0, 0.25);
-            planeSource->SetPoint2(0.25, 0, 0.65);
+            planeSource->SetOrigin(0.4, 0, 0.4);
+            planeSource->SetPoint1(0.85, 0, 0.4);
+            planeSource->SetPoint2(0.4, 0, 0.85);
         } else { // YZ
-            planeSource->SetOrigin(0, 0.25, 0.25);
-            planeSource->SetPoint1(0, 0.65, 0.25);
-            planeSource->SetPoint2(0, 0.25, 0.65);
+            planeSource->SetOrigin(0, 0.4, 0.4);
+            planeSource->SetPoint1(0, 0.85, 0.4);
+            planeSource->SetPoint2(0, 0.4, 0.85);
         }
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
