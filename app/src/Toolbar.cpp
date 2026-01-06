@@ -149,6 +149,16 @@ static QIcon createToolIcon(const QString& tool, const QColor& color = QColor("#
         painter.drawEllipse(3, 6, 14, 8);
         painter.setBrush(color);
         painter.drawEllipse(8, 8, 4, 4);
+    } else if (tool == "pan") {
+        // Hand/pan icon
+        painter.drawLine(10, 6, 10, 15);
+        painter.drawLine(7, 8, 7, 14);
+        painter.drawLine(13, 8, 13, 14);
+        painter.drawLine(16, 10, 16, 14);
+        painter.drawArc(4, 13, 6, 4, 0, 180 * 16);
+        painter.drawArc(10, 13, 6, 4, 0, 180 * 16);
+        painter.drawLine(4, 15, 4, 10);
+        painter.drawLine(19, 15, 19, 12);
     }
     
     return QIcon(pixmap);
@@ -279,6 +289,14 @@ void Toolbar::createManipulationSection() {
     scaleAction_->setToolTip("Scale (T)");
     toolGroup->addAction(scaleAction_);
     connect(scaleAction_, &QAction::triggered, this, &Toolbar::toolScale);
+    
+    // Pan tool (for easier camera navigation)
+    panAction_ = addAction(createToolIcon("pan"), "Pan");
+    panAction_->setCheckable(true);
+    panAction_->setShortcut(QKeySequence("H"));
+    panAction_->setToolTip("Pan View (H) - Hold middle click to pan");
+    toolGroup->addAction(panAction_);
+    connect(panAction_, &QAction::triggered, this, &Toolbar::toolPan);
 }
 
 void Toolbar::createShapeSection() {
@@ -388,6 +406,37 @@ QToolButton* Toolbar::createDropdownButton(const QIcon& icon, QMenu* menu) {
     )");
     
     return button;
+}
+
+// === Sync toolbar from external mode changes ===
+void Toolbar::setSelectMode() {
+    if (selectAction_ && !selectAction_->isChecked()) {
+        selectAction_->setChecked(true);
+    }
+}
+
+void Toolbar::setMoveMode() {
+    if (moveAction_ && !moveAction_->isChecked()) {
+        moveAction_->setChecked(true);
+    }
+}
+
+void Toolbar::setRotateMode() {
+    if (rotateAction_ && !rotateAction_->isChecked()) {
+        rotateAction_->setChecked(true);
+    }
+}
+
+void Toolbar::setScaleMode() {
+    if (scaleAction_ && !scaleAction_->isChecked()) {
+        scaleAction_->setChecked(true);
+    }
+}
+
+void Toolbar::setPanMode() {
+    if (panAction_ && !panAction_->isChecked()) {
+        panAction_->setChecked(true);
+    }
 }
 
 } // namespace geantcad

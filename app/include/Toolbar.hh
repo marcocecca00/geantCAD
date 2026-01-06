@@ -22,6 +22,14 @@ class Toolbar : public QToolBar {
 
 public:
     explicit Toolbar(QWidget* parent = nullptr);
+    
+public slots:
+    // Sync toolbar with viewport mode changes
+    void setSelectMode();
+    void setMoveMode();
+    void setRotateMode();
+    void setScaleMode();
+    void setPanMode();
 
 signals:
     // === View ===
@@ -40,6 +48,7 @@ signals:
     void toolMove();
     void toolRotate();
     void toolScale();
+    void toolPan();
     
     // === Create (Shapes) ===
     void createBox();
@@ -78,6 +87,7 @@ private:
     QAction* moveAction_ = nullptr;
     QAction* rotateAction_ = nullptr;
     QAction* scaleAction_ = nullptr;
+    QAction* panAction_ = nullptr;
     
     QAction* measureAction_ = nullptr;
     QAction* clippingAction_ = nullptr;

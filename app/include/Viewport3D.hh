@@ -49,7 +49,8 @@ public:
         Select,
         Move,
         Rotate,
-        Scale
+        Scale,
+        Pan  // Camera panning mode
     };
     void setInteractionMode(InteractionMode mode);
     InteractionMode getInteractionMode() const { return interactionMode_; }
@@ -127,6 +128,7 @@ signals:
     void objectTransformed(VolumeNode* node);
     void pointPicked(const QVector3D& point);  // For measurement tool
     void measurementModeChanged(bool enabled);  // Notify when measurement mode changes
+    void interactionModeChanged(InteractionMode mode);  // Sync toolbar with viewport
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -179,6 +181,10 @@ private:
     VolumeNode* draggedNode_ = nullptr;
     QVector3D dragStartWorldPos_;
     Transform dragStartTransform_;
+    
+    // Pan mode state
+    bool isPanning_ = false;
+    QPoint lastPanPos_;
     
     // View cube widget
     vtkSmartPointer<vtkOrientationMarkerWidget> viewCubeWidget_;

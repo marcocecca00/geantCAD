@@ -165,17 +165,18 @@ void Viewport3D::setupRenderer() {
     // Create manipulation gizmos
     createGizmos();
     
-    // Set up camera with better initial position
+    // Set up camera with better initial position - zoom into a smaller region on startup
+    // Position camera closer to origin for a more zoomed-in initial view
     vtkCamera* camera = renderer_->GetActiveCamera();
-    camera->SetPosition(200, 200, 200);
+    camera->SetPosition(150, 150, 150);  // Closer initial position
     camera->SetFocalPoint(0, 0, 0);
     camera->SetViewUp(0, 0, 1);
     
     // Configure camera for better interaction
-    camera->SetClippingRange(1.0, 10000.0); // Wide clipping range
-    camera->SetViewAngle(30.0); // Standard field of view
+    camera->SetClippingRange(0.1, 20000.0); // Wide clipping range
+    camera->SetViewAngle(45.0); // Wider field of view for better perspective
     
-    renderer_->ResetCamera();
+    // Don't call ResetCamera() - keep the manual camera position for zoomed-in view
 }
 
 void Viewport3D::setupInteractor() {
@@ -791,12 +792,17 @@ void Viewport3D::setCommandStack(CommandStack* commandStack) {
 }
 
 void Viewport3D::setInteractionMode(InteractionMode mode) {
-    interactionMode_ = mode;
-    
-    // Deactivate measurement mode when switching tools
-    if (mode != InteractionMode::Select && measurementMode_) {
-        measurementMode_ = false;
-        emit measurementModeChanged(false);
+    if (interactionMode_ != mode) {
+        interactionMode_ = mode;
+        
+        // Deactivate measurement mode when switching tools
+        if (mode != InteractionMode::Select && measurementMode_) {
+            measurementMode_ = false;
+            emit measurementModeChanged(false);
+        }
+        
+        // Notify toolbar to sync button state
+        emit interactionModeChanged(mode);
     }
     
 #ifndef GEANTCAD_NO_VTK
@@ -858,6 +864,10 @@ void Viewport3D::keyPressEvent(QKeyEvent* event) {
             break;
         case Qt::Key_T:
             setInteractionMode(InteractionMode::Scale);
+            emit viewChanged();
+            break;
+        case Qt::Key_H:
+            setInteractionMode(InteractionMode::Pan);
             emit viewChanged();
             break;
             
@@ -1044,6 +1054,13 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                 emit selectionChanged(nullptr);
                 return;
             }
+        }
+        
+        // Pan mode - start panning with left click
+        if (interactionMode_ == InteractionMode::Pan) {
+            isPanning_ = true;
+            lastPanPos_ = event->pos();
+            return;
         }
         
         // In Select mode, pick objects or deselect on empty click
@@ -1368,6 +1385,45 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         }
     }
     
+    // Pan mode: left click to pan camera
+    if (isPanning_ && (event->buttons() & Qt::LeftButton)) {
+        QPoint delta = event->pos() - lastPanPos_;
+        vtkCamera* camera = renderer_->GetActiveCamera();
+        
+        double distance = camera->GetDistance();
+        double panScale = distance / 500.0;
+        
+        double* viewUp = camera->GetViewUp();
+        double viewRight[3];
+        double* viewDir = camera->GetDirectionOfProjection();
+        
+        // Cross product for right vector
+        viewRight[0] = viewUp[1] * viewDir[2] - viewUp[2] * viewDir[1];
+        viewRight[1] = viewUp[2] * viewDir[0] - viewUp[0] * viewDir[2];
+        viewRight[2] = viewUp[0] * viewDir[1] - viewUp[1] * viewDir[0];
+        
+        double panX = -delta.x() * panScale;
+        double panY = delta.y() * panScale;
+        
+        double* focalPoint = camera->GetFocalPoint();
+        double* position = camera->GetPosition();
+        
+        camera->SetFocalPoint(
+            focalPoint[0] + viewRight[0] * panX + viewUp[0] * panY,
+            focalPoint[1] + viewRight[1] * panX + viewUp[1] * panY,
+            focalPoint[2] + viewRight[2] * panX + viewUp[2] * panY
+        );
+        camera->SetPosition(
+            position[0] + viewRight[0] * panX + viewUp[0] * panY,
+            position[1] + viewRight[1] * panX + viewUp[1] * panY,
+            position[2] + viewRight[2] * panX + viewUp[2] * panY
+        );
+        
+        lastPanPos_ = event->pos();
+        renderWindow_->Render();
+        return;
+    }
+    
     // Camera orbit ONLY with middle mouse button
     // Left button NEVER moves camera
     if (event->buttons() & Qt::MiddleButton) {
@@ -1380,6 +1436,11 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
+    // Stop panning
+    if (isPanning_ && event->button() == Qt::LeftButton) {
+        isPanning_ = false;
+    }
+    
     // Handle end of drag operation
     if (isDragging_ && draggedNode_ && event->button() == Qt::LeftButton) {
         // Clear smart guides and hide transform text

@@ -839,6 +839,31 @@ void MainWindow::connectSignals() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Scale);
         statusBar_->showMessage("Scale (T) - Drag to scale geometry. X/Y/Z to constrain axis.", 4000);
     });
+    connect(toolbar_, &Toolbar::toolPan, this, [this]() {
+        viewport_->setInteractionMode(Viewport3D::InteractionMode::Pan);
+        statusBar_->showMessage("Pan (H) - Left-click and drag to pan camera. Middle-click to orbit.", 4000);
+    });
+    
+    // Sync toolbar buttons when viewport mode changes (e.g., via right-click menu or shortcut)
+    connect(viewport_, &Viewport3D::interactionModeChanged, this, [this](Viewport3D::InteractionMode mode) {
+        switch (mode) {
+            case Viewport3D::InteractionMode::Select:
+                toolbar_->setSelectMode();
+                break;
+            case Viewport3D::InteractionMode::Move:
+                toolbar_->setMoveMode();
+                break;
+            case Viewport3D::InteractionMode::Rotate:
+                toolbar_->setRotateMode();
+                break;
+            case Viewport3D::InteractionMode::Scale:
+                toolbar_->setScaleMode();
+                break;
+            case Viewport3D::InteractionMode::Pan:
+                toolbar_->setPanMode();
+                break;
+        }
+    });
     
     // Viewport mode changes -> update toolbar
     connect(viewport_, &Viewport3D::viewChanged, this, [this]() {
