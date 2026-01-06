@@ -10,7 +10,7 @@ ViewCube::ViewCube(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedSize(180, 180);  // Even larger cube for better visibility
+    setFixedSize(100, 100);  // Compact cube - no container needed
     setAttribute(Qt::WA_TranslucentBackground, true);  // Transparent background
     
     // Modern colors - dark theme with accent
@@ -176,18 +176,7 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     
-    // Modern rounded background with subtle gradient
-    QLinearGradient bgGrad(0, 0, 0, height());
-    bgGrad.setColorAt(0, QColor(35, 40, 48, 230));
-    bgGrad.setColorAt(1, QColor(25, 28, 35, 230));
-    
-    QPainterPath bgPath;
-    bgPath.addRoundedRect(rect().adjusted(2, 2, -2, -2), 12, 12);
-    painter.fillPath(bgPath, bgGrad);
-    
-    // Subtle border
-    painter.setPen(QPen(QColor(70, 80, 95, 150), 1));
-    painter.drawPath(bgPath);
+    // NO background container - just draw the cube directly
     
     // Draw faces (already sorted back to front)
     for (size_t i = 0; i < faces_.size(); ++i) {
@@ -205,38 +194,33 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
             static_cast<int>(faceColor.red() * lightFactor),
             static_cast<int>(faceColor.green() * lightFactor),
             static_cast<int>(faceColor.blue() * lightFactor),
-            220
+            240
         );
         
-        // Draw face with rounded feel
+        // Draw face
         painter.setBrush(faceColor);
-        painter.setPen(QPen(QColor(edgeColor_.red(), edgeColor_.green(), edgeColor_.blue(), 100), 1));
+        painter.setPen(QPen(QColor(edgeColor_.red(), edgeColor_.green(), edgeColor_.blue(), 150), 1.5));
         painter.drawPolygon(face.polygon);
         
         // Draw label on visible faces
         if (i >= faces_.size() - 3) {
             QPointF center = face.polygon.boundingRect().center();
             
-            QFont font("SF Pro Display", 8);
-            if (!QFontInfo(font).exactMatch()) {
-                font = QFont("Segoe UI", 8);
-            }
+            QFont font("Segoe UI", 9);
             font.setBold(true);
-            font.setLetterSpacing(QFont::PercentageSpacing, 105);
             painter.setFont(font);
             
-            // Subtle text shadow
-            painter.setPen(QColor(0, 0, 0, 100));
-            painter.drawText(QRectF(center.x() - 20 + 1, center.y() - 6 + 1, 40, 12), Qt::AlignCenter, face.label);
+            // Text shadow
+            painter.setPen(QColor(0, 0, 0, 150));
+            painter.drawText(QRectF(center.x() - 25 + 1, center.y() - 7 + 1, 50, 14), Qt::AlignCenter, face.label);
             
             // Main text
             painter.setPen(face.hovered ? Qt::white : textColor_);
-            painter.drawText(QRectF(center.x() - 20, center.y() - 6, 40, 12), Qt::AlignCenter, face.label);
+            painter.drawText(QRectF(center.x() - 25, center.y() - 7, 50, 14), Qt::AlignCenter, face.label);
         }
     }
     
-    // Draw axis indicators in corner
-    drawAxisIndicators(painter);
+    // No axis indicators - cleaner look
 }
 
 void ViewCube::drawAxisIndicators(QPainter& painter) {

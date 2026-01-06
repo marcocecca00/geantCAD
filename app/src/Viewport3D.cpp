@@ -378,59 +378,62 @@ void Viewport3D::createGrid() {
     // Add grid to renderer (at back)
     renderer_->AddActor(gridActor_);
     
+    // Axis length proportional to typical object size (50mm) - show +/- 100mm
+    const double axisLength = 100.0;
+    
     // Create X axis line (red)
     vtkSmartPointer<vtkLineSource> xAxisLine = vtkSmartPointer<vtkLineSource>::New();
-    xAxisLine->SetPoint1(-gridSize, 0, 0);
-    xAxisLine->SetPoint2(gridSize, 0, 0);
+    xAxisLine->SetPoint1(-axisLength, 0, 0);
+    xAxisLine->SetPoint2(axisLength, 0, 0);
     
     vtkSmartPointer<vtkPolyDataMapper> xMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     xMapper->SetInputConnection(xAxisLine->GetOutputPort());
     
     axisXActor_ = vtkSmartPointer<vtkActor>::New();
     axisXActor_->SetMapper(xMapper);
-    axisXActor_->GetProperty()->SetColor(0.8, 0.2, 0.2); // Red
-    axisXActor_->GetProperty()->SetLineWidth(2.0);
-    axisXActor_->GetProperty()->SetOpacity(0.8);
+    axisXActor_->GetProperty()->SetColor(0.9, 0.2, 0.2); // Red
+    axisXActor_->GetProperty()->SetLineWidth(2.5);
+    axisXActor_->GetProperty()->SetOpacity(0.9);
     axisXActor_->SetPickable(false);
     renderer_->AddActor(axisXActor_);
     
     // Create Y axis line (green)
     vtkSmartPointer<vtkLineSource> yAxisLine = vtkSmartPointer<vtkLineSource>::New();
-    yAxisLine->SetPoint1(0, -gridSize, 0);
-    yAxisLine->SetPoint2(0, gridSize, 0);
+    yAxisLine->SetPoint1(0, -axisLength, 0);
+    yAxisLine->SetPoint2(0, axisLength, 0);
     
     vtkSmartPointer<vtkPolyDataMapper> yMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     yMapper->SetInputConnection(yAxisLine->GetOutputPort());
     
     axisYActor_ = vtkSmartPointer<vtkActor>::New();
     axisYActor_->SetMapper(yMapper);
-    axisYActor_->GetProperty()->SetColor(0.2, 0.8, 0.2); // Green
-    axisYActor_->GetProperty()->SetLineWidth(2.0);
-    axisYActor_->GetProperty()->SetOpacity(0.8);
+    axisYActor_->GetProperty()->SetColor(0.2, 0.9, 0.2); // Green
+    axisYActor_->GetProperty()->SetLineWidth(2.5);
+    axisYActor_->GetProperty()->SetOpacity(0.9);
     axisYActor_->SetPickable(false);
     renderer_->AddActor(axisYActor_);
     
     // Create Z axis line (blue) - vertical
     vtkSmartPointer<vtkLineSource> zAxisLine = vtkSmartPointer<vtkLineSource>::New();
-    zAxisLine->SetPoint1(0, 0, -gridSize);
-    zAxisLine->SetPoint2(0, 0, gridSize);
+    zAxisLine->SetPoint1(0, 0, 0);  // Z axis starts at origin (not below)
+    zAxisLine->SetPoint2(0, 0, axisLength);
     
     vtkSmartPointer<vtkPolyDataMapper> zMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     zMapper->SetInputConnection(zAxisLine->GetOutputPort());
     
     axisZActor_ = vtkSmartPointer<vtkActor>::New();
     axisZActor_->SetMapper(zMapper);
-    axisZActor_->GetProperty()->SetColor(0.2, 0.4, 0.9); // Blue
-    axisZActor_->GetProperty()->SetLineWidth(2.0);
-    axisZActor_->GetProperty()->SetOpacity(0.8);
+    axisZActor_->GetProperty()->SetColor(0.2, 0.4, 0.95); // Blue
+    axisZActor_->GetProperty()->SetLineWidth(2.5);
+    axisZActor_->GetProperty()->SetOpacity(0.9);
     axisZActor_->SetPickable(false);
     renderer_->AddActor(axisZActor_);
     
-    // Create axis markers (cones at positive ends) instead of text labels
+    // Create axis markers (small cones at positive ends)
     auto createAxisMarker = [&](double x, double y, double z, double dirX, double dirY, double dirZ, double r, double g, double b) {
         vtkSmartPointer<vtkConeSource> cone = vtkSmartPointer<vtkConeSource>::New();
-        cone->SetHeight(30);
-        cone->SetRadius(8);
+        cone->SetHeight(8);  // Smaller cones
+        cone->SetRadius(3);
         cone->SetResolution(16);
         cone->SetDirection(dirX, dirY, dirZ);
         
@@ -448,9 +451,9 @@ void Viewport3D::createGrid() {
     };
     
     // Add cone markers at the positive end of each axis
-    createAxisMarker(gridSize + 15, 0, 0, 1, 0, 0, 0.8, 0.2, 0.2);  // Red X
-    createAxisMarker(0, gridSize + 15, 0, 0, 1, 0, 0.2, 0.8, 0.2);  // Green Y
-    createAxisMarker(0, 0, gridSize + 15, 0, 0, 1, 0.2, 0.4, 0.9);  // Blue Z
+    createAxisMarker(axisLength + 4, 0, 0, 1, 0, 0, 0.9, 0.2, 0.2);   // Red X
+    createAxisMarker(0, axisLength + 4, 0, 0, 1, 0, 0.2, 0.9, 0.2);   // Green Y
+    createAxisMarker(0, 0, axisLength + 4, 0, 0, 1, 0.2, 0.4, 0.95);  // Blue Z
     
     // Apply visibility
     updateGrid();

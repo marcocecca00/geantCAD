@@ -212,33 +212,18 @@ void Toolbar::createHistorySection() {
 }
 
 void Toolbar::createViewSection() {
-    // View dropdown button
-    QMenu* viewMenu = new QMenu(this);
-    viewMenu->setStyleSheet("QMenu { min-width: 150px; }");
+    // Only Frame Selection and Home View - simplified
     
-    viewMenu->addAction("Front (1)", this, &Toolbar::viewFront);
-    viewMenu->addAction("Back (Ctrl+1)", this, &Toolbar::viewBack);
-    viewMenu->addAction("Left (3)", this, &Toolbar::viewLeft);
-    viewMenu->addAction("Right (Ctrl+3)", this, &Toolbar::viewRight);
-    viewMenu->addAction("Top (7)", this, &Toolbar::viewTop);
-    viewMenu->addAction("Bottom (Ctrl+7)", this, &Toolbar::viewBottom);
-    viewMenu->addSeparator();
-    viewMenu->addAction("Isometric (0)", this, &Toolbar::viewIsometric);
-    
-    QToolButton* viewBtn = createDropdownButton(createToolIcon("view"), viewMenu);
-    viewBtn->setToolTip("Standard Views");
-    addWidget(viewBtn);
-    
-    // Frame Selection
+    // Frame Selection (zoom to selected object)
     QAction* frameAction = addAction(createToolIcon("frame"), "Frame");
     frameAction->setShortcut(QKeySequence("F"));
     frameAction->setToolTip("Frame Selection (F)");
     connect(frameAction, &QAction::triggered, this, &Toolbar::viewFrameSelection);
     
-    // Reset View
-    QAction* resetAction = addAction(createToolIcon("reset"), "Reset");
+    // Home View (reset to default view)
+    QAction* resetAction = addAction(createToolIcon("reset"), "Home");
     resetAction->setShortcut(QKeySequence("Home"));
-    resetAction->setToolTip("Reset View (Home)");
+    resetAction->setToolTip("Home View (Home)");
     connect(resetAction, &QAction::triggered, this, &Toolbar::viewReset);
 }
 
