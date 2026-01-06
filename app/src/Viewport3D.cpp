@@ -18,6 +18,8 @@
 #include <vtkSphere.h>
 #include <vtkCone.h>
 #include <vtkCubeSource.h>
+#include <vtkTextActor.h>
+#include <vtkTextProperty.h>
 #include <vtkCylinderSource.h>
 #include <vtkSphereSource.h>
 #include <vtkConeSource.h>
@@ -235,7 +237,7 @@ void Viewport3D::createGrid() {
             // Skip the major line itself (j=0)
             if (j == 0 && i != -majorDivisions) continue;
             
-            // Lines parallel to Y axis
+        // Lines parallel to Y axis
             points->InsertNextPoint(minorPos, -gridSize, 0);
             points->InsertNextPoint(minorPos, gridSize, 0);
             
@@ -249,7 +251,7 @@ void Viewport3D::createGrid() {
                 minorLines->InsertNextCell(line1);
             }
             
-            // Lines parallel to X axis
+        // Lines parallel to X axis
             points->InsertNextPoint(-gridSize, minorPos, 0);
             points->InsertNextPoint(gridSize, minorPos, 0);
             
@@ -718,6 +720,14 @@ void Viewport3D::updateScene() {
         }
     }
     
+    // Preserve selection highlight after scene update
+    if (sceneGraph_) {
+        VolumeNode* selected = sceneGraph_->getSelected();
+        if (selected) {
+            updateSelectionHighlight(selected);
+        }
+    }
+    
     renderWindow_->Render();
 #endif
 }
@@ -1089,12 +1099,13 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             newTransform.setTranslation(newPos);
             draggedNode_->getTransform() = newTransform;
             
-            // Calculate and emit transform info
+            // Calculate and display transform info in viewport
             QVector3D totalMove = newPos - dragStartTransform_.getTranslation();
             transformInfoText_ = QString("Move: Δ(%1, %2, %3) mm")
                 .arg(totalMove.x(), 0, 'f', 1)
                 .arg(totalMove.y(), 0, 'f', 1)
                 .arg(totalMove.z(), 0, 'f', 1);
+            updateTransformTextOverlay(transformInfoText_);
             
             // Update last position for next frame
             lastPickPos_ = event->pos();
@@ -1147,6 +1158,7 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             transformInfoText_ = QString("Rotate %1: Δ%2°")
                 .arg(axisName)
                 .arg(deltaEuler.z(), 0, 'f', 1); // Show delta around active axis
+            updateTransformTextOverlay(transformInfoText_);
             
             // Update last position for next frame
             lastPickPos_ = event->pos();
@@ -1236,6 +1248,7 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                 transformInfoText_ = QString("Scale: %1%2%")
                     .arg(scalePercent > 0 ? "+" : "")
                     .arg(scalePercent, 0, 'f', 1);
+                updateTransformTextOverlay(transformInfoText_);
             }
             
             // Update for continuous feedback
@@ -1257,8 +1270,9 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
     // Handle end of drag operation
     if (isDragging_ && draggedNode_ && event->button() == Qt::LeftButton) {
-        // Clear smart guides
+        // Clear smart guides and hide transform text
         clearSmartGuides();
+        hideTransformTextOverlay();
         
         // Create undo command for the entire drag operation
         if (commandStack_) {
@@ -1325,7 +1339,7 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
             picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
             
             vtkActor* pickedActor = picker->GetActor();
-            VolumeNode* pickedNode = nullptr;
+                VolumeNode* pickedNode = nullptr;
             
             if (pickedActor) {
                 // Find VolumeNode from actor
@@ -1334,12 +1348,12 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
                         pickedNode = pair.first;
                         break;
                     }
+                    }
                 }
-            }
-            
+                
             // Update selection
-            updateSelectionHighlight(pickedNode);
-            emit selectionChanged(pickedNode);
+                        updateSelectionHighlight(pickedNode);
+                        emit selectionChanged(pickedNode);
             
             if (renderWindow_) {
                 renderWindow_->Render();
@@ -1641,6 +1655,20 @@ void Viewport3D::createGizmos() {
     gizmoScaleY_ = createScaleBox(0.2, 1.0, 0.2, 0, 1, 0);
     gizmoScaleZ_ = createScaleBox(0.2, 0.4, 1.0, 0, 0, 1);
     
+    // Create transform info text overlay
+    transformInfoActor_ = vtkSmartPointer<vtkTextActor>::New();
+    transformInfoActor_->SetInput("");
+    transformInfoActor_->SetPosition(10, 40);  // Bottom-left corner
+    transformInfoActor_->GetTextProperty()->SetFontSize(18);
+    transformInfoActor_->GetTextProperty()->SetColor(1.0, 1.0, 0.3); // Yellow text
+    transformInfoActor_->GetTextProperty()->SetFontFamilyToCourier();
+    transformInfoActor_->GetTextProperty()->SetBold(true);
+    transformInfoActor_->GetTextProperty()->SetShadow(true);
+    transformInfoActor_->GetTextProperty()->SetBackgroundOpacity(0.5);
+    transformInfoActor_->GetTextProperty()->SetBackgroundColor(0.1, 0.1, 0.1);
+    transformInfoActor_->VisibilityOff();  // Hidden initially
+    renderer_->AddActor2D(transformInfoActor_);
+    
     // Initially hide all gizmos
     showGizmo(false);
 }
@@ -1775,6 +1803,28 @@ void Viewport3D::showGizmo(bool show) {
     setVisibility(gizmoScaleX_);
     setVisibility(gizmoScaleY_);
     setVisibility(gizmoScaleZ_);
+}
+
+void Viewport3D::updateTransformTextOverlay(const QString& text) {
+    if (!transformInfoActor_) return;
+    
+    transformInfoActor_->SetInput(text.toStdString().c_str());
+    transformInfoActor_->VisibilityOn();
+    
+    if (renderWindow_) {
+        renderWindow_->Render();
+    }
+}
+
+void Viewport3D::hideTransformTextOverlay() {
+    if (!transformInfoActor_) return;
+    
+    transformInfoActor_->VisibilityOff();
+    transformInfoText_.clear();
+    
+    if (renderWindow_) {
+        renderWindow_->Render();
+    }
 }
 
 int Viewport3D::pickGizmoAxis(int x, int y) {

@@ -22,6 +22,7 @@
 class vtkActor;
 class vtkPolyDataMapper;
 class vtkPolyDataAlgorithm;
+class vtkTextActor;
 
 namespace geantcad {
 
@@ -211,8 +212,10 @@ private:
     bool proportionalScaling_ = true; // Default to proportional
     
     // Transform info text overlay
-    vtkSmartPointer<vtkActor> transformInfoActor_;
+    vtkSmartPointer<vtkTextActor> transformInfoActor_;
     QString transformInfoText_;
+    void updateTransformTextOverlay(const QString& text);
+    void hideTransformTextOverlay();
     
     // Helper functions for manipulation
     QVector3D screenToWorld(int x, int y, double depth = 0.0);
