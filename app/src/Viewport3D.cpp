@@ -1006,15 +1006,9 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
         }
     }
     
-    // Camera control only in Select mode with LEFT button
-    // Middle button always initiates camera orbit (handled by VTK)
-    if (event->button() == Qt::MiddleButton) {
-        QVTKOpenGLNativeWidget::mousePressEvent(event);
-    }
-    else if (interactionMode_ == InteractionMode::Select && event->button() == Qt::LeftButton) {
-        QVTKOpenGLNativeWidget::mousePressEvent(event);
-    }
-    // In manipulation modes, LEFT button is for object manipulation ONLY
+    // Camera orbit ONLY with middle mouse button
+    // Left button NEVER moves camera - only for selection/manipulation
+    // (Middle button already handled at top of function)
 #else
     QWidget::mousePressEvent(event);
 #endif
@@ -1180,13 +1174,20 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             
             draggedNode_->getTransform().setRotation(currentRotation);
             
-            // Display actual rotation values (same as Properties panel)
+            // Display rotation with axis indicator
             QVector3D currentEuler = currentRotation.toEulerAngles();
-            
-            transformInfoText_ = QString("Rotation: (%1, %2, %3)°")
+            QString axisHint;
+            switch (constraintPlane_) {
+                case ConstraintPlane::AxisX: axisHint = " [X]"; break;
+                case ConstraintPlane::AxisY: axisHint = " [Y]"; break;
+                case ConstraintPlane::AxisZ: axisHint = " [Z]"; break;
+                default: axisHint = ""; break;
+            }
+            transformInfoText_ = QString("Rotation: (%1, %2, %3)°%4")
                 .arg(currentEuler.x(), 0, 'f', 1)
                 .arg(currentEuler.y(), 0, 'f', 1)
-                .arg(currentEuler.z(), 0, 'f', 1);
+                .arg(currentEuler.z(), 0, 'f', 1)
+                .arg(axisHint);
             updateTransformTextOverlay(transformInfoText_);
             
             // Update last position for next frame
@@ -1296,13 +1297,9 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         }
     }
     
-    // Camera control: only in Select mode with LEFT button
-    // Middle button always works for camera via VTK (handled separately)
-    if (interactionMode_ == InteractionMode::Select && (event->buttons() & Qt::LeftButton)) {
-        QVTKOpenGLNativeWidget::mouseMoveEvent(event);
-    }
-    // Middle button for camera orbit always works
-    else if (event->buttons() & Qt::MiddleButton) {
+    // Camera orbit ONLY with middle mouse button
+    // Left button NEVER moves camera
+    if (event->buttons() & Qt::MiddleButton) {
         QVTKOpenGLNativeWidget::mouseMoveEvent(event);
     }
 #else
@@ -1677,20 +1674,20 @@ void Viewport3D::createGizmos() {
         // Sleek arrow with thin cylinder shaft and small cone tip
         vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
         
-        // Shaft (thin cylinder)
+        // Shaft (thin cylinder) - LONGER for better visibility
         vtkSmartPointer<vtkCylinderSource> shaft = vtkSmartPointer<vtkCylinderSource>::New();
-        shaft->SetHeight(0.75);
-        shaft->SetRadius(0.012);  // Much thinner
+        shaft->SetHeight(1.2);  // Longer shaft
+        shaft->SetRadius(0.015);
         shaft->SetResolution(16);
-        shaft->SetCenter(0, 0.375, 0);
+        shaft->SetCenter(0, 0.6, 0);
         shaft->Update();
         
         // Tip (small cone)
         vtkSmartPointer<vtkConeSource> tip = vtkSmartPointer<vtkConeSource>::New();
-        tip->SetHeight(0.25);
-        tip->SetRadius(0.04);  // Smaller tip
+        tip->SetHeight(0.2);
+        tip->SetRadius(0.05);
         tip->SetResolution(16);
-        tip->SetCenter(0, 0.875, 0);
+        tip->SetCenter(0, 1.3, 0);  // At end of longer shaft
         tip->SetDirection(0, 1, 0);
         tip->Update();
         
@@ -1732,19 +1729,19 @@ void Viewport3D::createGizmos() {
         planeSource->SetXResolution(1);
         planeSource->SetYResolution(1);
         
-        // Position at corner between two axes
+        // Position at corner between two axes - LARGER and more visible
         if (strcmp(plane, "XY") == 0) {
-            planeSource->SetOrigin(0.15, 0.15, 0);
-            planeSource->SetPoint1(0.4, 0.15, 0);
-            planeSource->SetPoint2(0.15, 0.4, 0);
+            planeSource->SetOrigin(0.25, 0.25, 0);
+            planeSource->SetPoint1(0.65, 0.25, 0);
+            planeSource->SetPoint2(0.25, 0.65, 0);
         } else if (strcmp(plane, "XZ") == 0) {
-            planeSource->SetOrigin(0.15, 0, 0.15);
-            planeSource->SetPoint1(0.4, 0, 0.15);
-            planeSource->SetPoint2(0.15, 0, 0.4);
+            planeSource->SetOrigin(0.25, 0, 0.25);
+            planeSource->SetPoint1(0.65, 0, 0.25);
+            planeSource->SetPoint2(0.25, 0, 0.65);
         } else { // YZ
-            planeSource->SetOrigin(0, 0.15, 0.15);
-            planeSource->SetPoint1(0, 0.4, 0.15);
-            planeSource->SetPoint2(0, 0.15, 0.4);
+            planeSource->SetOrigin(0, 0.25, 0.25);
+            planeSource->SetPoint1(0, 0.65, 0.25);
+            planeSource->SetPoint2(0, 0.25, 0.65);
         }
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -1765,10 +1762,10 @@ void Viewport3D::createGizmos() {
     
     // === Create sleek rotation rings (thin torus) ===
     auto createRing = [&](double r, double g, double b, const char* axis) {
-        // Elegant thin ring
+        // Elegant thin ring - LARGER radius
         vtkSmartPointer<vtkRegularPolygonSource> ring = vtkSmartPointer<vtkRegularPolygonSource>::New();
         ring->SetNumberOfSides(64);
-        ring->SetRadius(1.0);
+        ring->SetRadius(1.3);  // Larger ring
         ring->SetCenter(0, 0, 0);
         ring->GeneratePolygonOff();  // Creates a polyline
         ring->Update();
@@ -1776,7 +1773,7 @@ void Viewport3D::createGizmos() {
         // Thin tube for sleek appearance
         vtkSmartPointer<vtkTubeFilter> tubeFilter = vtkSmartPointer<vtkTubeFilter>::New();
         tubeFilter->SetInputConnection(ring->GetOutputPort());
-        tubeFilter->SetRadius(0.015);  // Much thinner
+        tubeFilter->SetRadius(0.02);  // Slightly thicker for visibility
         tubeFilter->SetNumberOfSides(12);
         tubeFilter->Update();
         
@@ -1810,23 +1807,23 @@ void Viewport3D::createGizmos() {
     auto createScaleHandle = [&](double r, double g, double b, double x, double y, double z) {
         vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
         
-        // Line from center to handle
+        // Line from center to handle - LONGER
         vtkSmartPointer<vtkLineSource> line = vtkSmartPointer<vtkLineSource>::New();
         line->SetPoint1(0, 0, 0);
-        line->SetPoint2(x * 0.8, y * 0.8, z * 0.8);
+        line->SetPoint2(x * 1.2, y * 1.2, z * 1.2);  // Longer line
         
         vtkSmartPointer<vtkTubeFilter> lineTube = vtkSmartPointer<vtkTubeFilter>::New();
         lineTube->SetInputConnection(line->GetOutputPort());
-        lineTube->SetRadius(0.01);  // Thinner line
+        lineTube->SetRadius(0.012);
         lineTube->SetNumberOfSides(8);
         lineTube->Update();
         
-        // Cube at end
+        // Cube at end - slightly larger
         vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
-        cube->SetXLength(0.12);
-        cube->SetYLength(0.12);
-        cube->SetZLength(0.12);
-        cube->SetCenter(x * 0.9, y * 0.9, z * 0.9);
+        cube->SetXLength(0.15);
+        cube->SetYLength(0.15);
+        cube->SetZLength(0.15);
+        cube->SetCenter(x * 1.3, y * 1.3, z * 1.3);  // At end of longer line
         cube->Update();
         
         appendFilter->AddInputData(lineTube->GetOutput());

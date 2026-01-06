@@ -10,7 +10,7 @@ ViewCube::ViewCube(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedSize(120, 120);  // Slightly larger
+    setFixedSize(150, 150);  // Larger cube
     setAttribute(Qt::WA_TranslucentBackground, true);  // Transparent background
     
     // Modern colors - dark theme with accent

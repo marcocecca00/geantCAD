@@ -94,8 +94,8 @@ private:
     QPoint lastMousePos_;
     
     // Visual settings
-    float cubeSize_ = 50.0f;  // Compact cube
-    float perspective_ = 400.0f;
+    float cubeSize_ = 65.0f;  // Larger cube
+    float perspective_ = 450.0f;
     
     // Modern dark theme colors (will be overridden in constructor)
     QColor frontColor_{60, 70, 85};
