@@ -51,6 +51,8 @@
 // vtkVectorText requires FreeType - using cone markers instead
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QColorDialog>
+#include <QCoreApplication>
 #include "../../core/include/Command.hh"
 #include "../../core/include/Transform.hh"
 #endif
@@ -784,12 +786,12 @@ void Viewport3D::setMeasurementMode(bool enabled) {
 }
 
 void Viewport3D::keyPressEvent(QKeyEvent* event) {
-    // Handle keyboard shortcuts
+    // Handle keyboard shortcuts (simplified set)
     switch (event->key()) {
+        // === Tool modes (Blender-like) ===
         case Qt::Key_S:
             if (event->modifiers() & Qt::ControlModifier) {
-                // Ctrl+S is handled by MainWindow
-                break;
+                break; // Ctrl+S handled by MainWindow
             }
             setInteractionMode(InteractionMode::Select);
             emit viewChanged();
@@ -802,81 +804,31 @@ void Viewport3D::keyPressEvent(QKeyEvent* event) {
             setInteractionMode(InteractionMode::Rotate);
             emit viewChanged();
             break;
-        case Qt::Key_G:
-            if (event->modifiers() & Qt::ControlModifier) {
-                // Ctrl+G toggles grid visibility
-                setGridVisible(!gridVisible_);
-                break;
-            }
-            // G key sets Move mode
-            setInteractionMode(InteractionMode::Move);
-            emit viewChanged();
-            break;
-        case Qt::Key_R:
-            setInteractionMode(InteractionMode::Rotate);
-            emit viewChanged();
-            break;
         case Qt::Key_T:
             setInteractionMode(InteractionMode::Scale);
             emit viewChanged();
             break;
+            
+        // === Axis constraints (during Move/Rotate/Scale) ===
         case Qt::Key_X:
-            // Constrain to X axis or YZ plane
-            if (event->modifiers() & Qt::ShiftModifier) {
-                setConstraintPlane(ConstraintPlane::YZ);
-            } else {
-                setConstraintPlane(ConstraintPlane::AxisX);
-            }
+            setConstraintPlane(ConstraintPlane::AxisX);
             emit viewChanged();
             break;
         case Qt::Key_Y:
-            // Constrain to Y axis or XZ plane
-            if (event->modifiers() & Qt::ShiftModifier) {
-                setConstraintPlane(ConstraintPlane::XZ);
-            } else {
-                setConstraintPlane(ConstraintPlane::AxisY);
-            }
+            setConstraintPlane(ConstraintPlane::AxisY);
             emit viewChanged();
             break;
         case Qt::Key_Z:
-            // Constrain to Z axis or XY plane
-            if (event->modifiers() & Qt::ShiftModifier) {
-                setConstraintPlane(ConstraintPlane::XY);
-            } else {
-                setConstraintPlane(ConstraintPlane::AxisZ);
-            }
+            setConstraintPlane(ConstraintPlane::AxisZ);
             emit viewChanged();
             break;
-        case Qt::Key_5:
-            // Toggle perspective/orthographic (like Blender)
-            if (projectionMode_ == ProjectionMode::Perspective) {
-                setProjectionMode(ProjectionMode::Orthographic);
-            } else {
-                setProjectionMode(ProjectionMode::Perspective);
-            }
-            emit viewChanged();
-            break;
+            
+        // === View controls ===
         case Qt::Key_F:
             frameSelection();
             break;
         case Qt::Key_Home:
             resetView();
-            break;
-        case Qt::Key_Plus:
-        case Qt::Key_Equal:
-            // Zoom in
-            if (renderer_ && renderer_->GetActiveCamera()) {
-                renderer_->GetActiveCamera()->Zoom(1.1);
-                if (renderWindow_) renderWindow_->Render();
-            }
-            break;
-        case Qt::Key_Minus:
-        case Qt::Key_Underscore:
-            // Zoom out
-            if (renderer_ && renderer_->GetActiveCamera()) {
-                renderer_->GetActiveCamera()->Zoom(0.9);
-                if (renderWindow_) renderWindow_->Render();
-            }
             break;
         case Qt::Key_Up:
             // Pan up
@@ -1035,6 +987,12 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
+    // Block camera movement when in manipulation mode (Move/Rotate/Scale)
+    // Camera only moves in Select mode or when no object is selected
+    bool blockCamera = (interactionMode_ != InteractionMode::Select) && 
+                       sceneGraph_ && sceneGraph_->getSelected() &&
+                       sceneGraph_->getSelected() != sceneGraph_->getRoot();
+    
     if (isDragging_ && draggedNode_) {
         // IMPORTANT: Don't call parent class when dragging to prevent camera movement
         int x = event->pos().x();
@@ -1046,11 +1004,11 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         
         if (interactionMode_ == InteractionMode::Move) {
             // Use screen-space delta for more predictable movement
-            // REDUCED sensitivity for better control
+            // VERY REDUCED sensitivity for precise control
             vtkCamera* camera = renderer_->GetActiveCamera();
             double cameraDistance = camera->GetDistance();
-            double moveFactor = cameraDistance / 800.0; // Reduced from 500 for slower movement
-            moveFactor = std::max(0.05, std::min(2.0, moveFactor)); // Tighter clamp
+            double moveFactor = cameraDistance / 2000.0; // Much slower movement
+            moveFactor = std::max(0.01, std::min(1.0, moveFactor)); // Tighter clamp
             
             // Calculate world delta based on camera orientation
             double* viewUp = camera->GetViewUp();
@@ -1072,9 +1030,9 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             
             // Use smaller delta multiplier for smoother motion
             QVector3D delta(
-                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor * 0.3,
-                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor * 0.3,
-                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor * 0.3
+                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor * 0.15,
+                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor * 0.15,
+                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor * 0.15
             );
             
             // Add delta to current position
@@ -1099,12 +1057,11 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             newTransform.setTranslation(newPos);
             draggedNode_->getTransform() = newTransform;
             
-            // Calculate and display transform info in viewport
-            QVector3D totalMove = newPos - dragStartTransform_.getTranslation();
-            transformInfoText_ = QString("Move: Δ(%1, %2, %3) mm")
-                .arg(totalMove.x(), 0, 'f', 1)
-                .arg(totalMove.y(), 0, 'f', 1)
-                .arg(totalMove.z(), 0, 'f', 1);
+            // Display actual position values (same as Properties panel)
+            transformInfoText_ = QString("Position: (%1, %2, %3) mm")
+                .arg(newPos.x(), 0, 'f', 1)
+                .arg(newPos.y(), 0, 'f', 1)
+                .arg(newPos.z(), 0, 'f', 1);
             updateTransformTextOverlay(transformInfoText_);
             
             // Update last position for next frame
@@ -1150,14 +1107,13 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             
             draggedNode_->getTransform().setRotation(currentRotation);
             
-            // Calculate total rotation from start (approximate using Euler angles)
-            QVector3D startEuler = dragStartTransform_.getRotation().toEulerAngles();
+            // Display actual rotation values (same as Properties panel)
             QVector3D currentEuler = currentRotation.toEulerAngles();
-            QVector3D deltaEuler = currentEuler - startEuler;
             
-            transformInfoText_ = QString("Rotate %1: Δ%2°")
-                .arg(axisName)
-                .arg(deltaEuler.z(), 0, 'f', 1); // Show delta around active axis
+            transformInfoText_ = QString("Rotation: (%1, %2, %3)°")
+                .arg(currentEuler.x(), 0, 'f', 1)
+                .arg(currentEuler.y(), 0, 'f', 1)
+                .arg(currentEuler.z(), 0, 'f', 1);
             updateTransformTextOverlay(transformInfoText_);
             
             // Update last position for next frame
@@ -1243,11 +1199,18 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                         break;
                 }
                 
-                // Calculate scale info text
-                double scalePercent = (scaleFactor - 1.0) * 100.0;
-                transformInfoText_ = QString("Scale: %1%2%")
-                    .arg(scalePercent > 0 ? "+" : "")
-                    .arg(scalePercent, 0, 'f', 1);
+                // Display actual scale text with shape dimensions
+                QString scaleText;
+                if (auto* bp = shape->getParamsAs<BoxParams>()) {
+                    scaleText = QString("Size: (%1, %2, %3) mm").arg(bp->x, 0, 'f', 1).arg(bp->y, 0, 'f', 1).arg(bp->z, 0, 'f', 1);
+                } else if (auto* sp = shape->getParamsAs<SphereParams>()) {
+                    scaleText = QString("Radius: %1 mm").arg(sp->rmax, 0, 'f', 1);
+                } else if (auto* tp = shape->getParamsAs<TubeParams>()) {
+                    scaleText = QString("R: %1, Z: %2 mm").arg(tp->rmax, 0, 'f', 1).arg(tp->dz, 0, 'f', 1);
+                } else {
+                    scaleText = QString("Scale: x%.2f").arg(scaleFactor);
+                }
+                transformInfoText_ = scaleText;
                 updateTransformTextOverlay(transformInfoText_);
             }
             
@@ -1260,7 +1223,10 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         }
     }
     
-    QVTKOpenGLNativeWidget::mouseMoveEvent(event);
+    // Block camera movement in manipulation modes when object is selected
+    if (!blockCamera) {
+        QVTKOpenGLNativeWidget::mouseMoveEvent(event);
+    }
 #else
     QWidget::mouseMoveEvent(event);
 #endif
@@ -1417,53 +1383,145 @@ void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
 
 void Viewport3D::showContextMenu(const QPoint& pos) {
 #ifndef GEANTCAD_NO_VTK
-    if (!sceneGraph_) return;
+    if (!sceneGraph_ || !renderer_) return;
     
     QMenu contextMenu(this);
     
+    // Check if we right-clicked on an object
+    int x = pos.x();
+    int y = pos.y();
+    vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+    picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
+    
+    vtkActor* pickedActor = picker->GetActor();
+    VolumeNode* clickedNode = nullptr;
+    
+    if (pickedActor) {
+        for (const auto& pair : actors_) {
+            if (pair.second && pair.second.GetPointer() == pickedActor) {
+                clickedNode = pair.first;
+                break;
+            }
+        }
+    }
+    
     VolumeNode* selected = sceneGraph_->getSelected();
     
-    // Tool actions
-    QAction* selectAction = contextMenu.addAction("Select (S)");
-    connect(selectAction, &QAction::triggered, [this]() {
-        setInteractionMode(InteractionMode::Select);
-        emit viewChanged();
-    });
-    
-    QAction* moveAction = contextMenu.addAction("Move (G)");
-    connect(moveAction, &QAction::triggered, [this]() {
-        setInteractionMode(InteractionMode::Move);
-        emit viewChanged();
-    });
-    
-    QAction* rotateAction = contextMenu.addAction("Rotate (R)");
-    connect(rotateAction, &QAction::triggered, [this]() {
-        setInteractionMode(InteractionMode::Rotate);
-        emit viewChanged();
-    });
-    
-    QAction* scaleAction = contextMenu.addAction("Scale (T)");
-    connect(scaleAction, &QAction::triggered, [this]() {
-        setInteractionMode(InteractionMode::Scale);
-        emit viewChanged();
-    });
-    
-    contextMenu.addSeparator();
-    
-    // View actions
-    QAction* frameAction = contextMenu.addAction("Frame Selection (F)");
-    connect(frameAction, &QAction::triggered, this, &Viewport3D::frameSelection);
-    
-    QAction* resetAction = contextMenu.addAction("Reset View (Home)");
-    connect(resetAction, &QAction::triggered, this, &Viewport3D::resetView);
-    
-    if (selected && selected != sceneGraph_->getRoot()) {
+    if (clickedNode && clickedNode != sceneGraph_->getRoot()) {
+        // ===== RIGHT-CLICK ON OBJECT: Show transformation menu =====
+        
+        // Select this object if not already selected
+        if (clickedNode != selected) {
+            sceneGraph_->setSelected(clickedNode);
+            updateSelectionHighlight(clickedNode);
+            emit selectionChanged(clickedNode);
+        }
+        
+        QAction* moveAction = contextMenu.addAction("Move (W)");
+        connect(moveAction, &QAction::triggered, [this]() {
+            setInteractionMode(InteractionMode::Move);
+            emit viewChanged();
+        });
+        
+        QAction* rotateAction = contextMenu.addAction("Rotate (E)");
+        connect(rotateAction, &QAction::triggered, [this]() {
+            setInteractionMode(InteractionMode::Rotate);
+            emit viewChanged();
+        });
+        
+        QAction* scaleAction = contextMenu.addAction("Scale (T)");
+        connect(scaleAction, &QAction::triggered, [this]() {
+            setInteractionMode(InteractionMode::Scale);
+            emit viewChanged();
+        });
+        
         contextMenu.addSeparator();
         
+        QAction* frameAction = contextMenu.addAction("Frame Object (F)");
+        connect(frameAction, &QAction::triggered, this, &Viewport3D::frameSelection);
+        
+        contextMenu.addSeparator();
+        
+        QAction* duplicateAction = contextMenu.addAction("Duplicate");
+        connect(duplicateAction, &QAction::triggered, [this, clickedNode]() {
+            // Duplicate will be handled by MainWindow via keyboard shortcut emulation
+            QKeyEvent* ke = new QKeyEvent(QEvent::KeyPress, Qt::Key_D, Qt::ControlModifier);
+            QCoreApplication::postEvent(this->window(), ke);
+        });
+        
         QAction* deleteAction = contextMenu.addAction("Delete");
-        connect(deleteAction, &QAction::triggered, [this, selected]() {
-            emit selectionChanged(nullptr);
-            // Delete will be handled by MainWindow
+        connect(deleteAction, &QAction::triggered, [this, clickedNode]() {
+            QKeyEvent* ke = new QKeyEvent(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+            QCoreApplication::postEvent(this->window(), ke);
+        });
+        
+    } else {
+        // ===== RIGHT-CLICK ON BACKGROUND: Show view settings =====
+        
+        QMenu* viewMenu = contextMenu.addMenu("View");
+        
+        QAction* resetAction = viewMenu->addAction("Reset View (Home)");
+        connect(resetAction, &QAction::triggered, this, &Viewport3D::resetView);
+        
+        QAction* frontAction = viewMenu->addAction("Front");
+        connect(frontAction, &QAction::triggered, [this]() { setStandardView(StandardView::Front); });
+        
+        QAction* backAction = viewMenu->addAction("Back");
+        connect(backAction, &QAction::triggered, [this]() { setStandardView(StandardView::Back); });
+        
+        QAction* leftAction = viewMenu->addAction("Left");
+        connect(leftAction, &QAction::triggered, [this]() { setStandardView(StandardView::Left); });
+        
+        QAction* rightAction = viewMenu->addAction("Right");
+        connect(rightAction, &QAction::triggered, [this]() { setStandardView(StandardView::Right); });
+        
+        QAction* topAction = viewMenu->addAction("Top");
+        connect(topAction, &QAction::triggered, [this]() { setStandardView(StandardView::Top); });
+        
+        QAction* bottomAction = viewMenu->addAction("Bottom");
+        connect(bottomAction, &QAction::triggered, [this]() { setStandardView(StandardView::Bottom); });
+        
+        QAction* isoAction = viewMenu->addAction("Isometric");
+        connect(isoAction, &QAction::triggered, [this]() { setStandardView(StandardView::Isometric); });
+        
+        contextMenu.addSeparator();
+        
+        // Grid settings
+        QAction* gridAction = contextMenu.addAction("Show Grid");
+        gridAction->setCheckable(true);
+        gridAction->setChecked(gridVisible_);
+        connect(gridAction, &QAction::triggered, [this](bool checked) {
+            setGridVisible(checked);
+        });
+        
+        QAction* snapAction = contextMenu.addAction("Snap to Grid");
+        snapAction->setCheckable(true);
+        snapAction->setChecked(snapToGrid_);
+        connect(snapAction, &QAction::triggered, [this](bool checked) {
+            setSnapToGrid(checked);
+        });
+        
+        contextMenu.addSeparator();
+        
+        // Projection toggle
+        QAction* projAction = contextMenu.addAction("Orthographic View");
+        projAction->setCheckable(true);
+        projAction->setChecked(projectionMode_ == ProjectionMode::Orthographic);
+        connect(projAction, &QAction::triggered, [this](bool checked) {
+            setProjectionMode(checked ? ProjectionMode::Orthographic : ProjectionMode::Perspective);
+        });
+        
+        contextMenu.addSeparator();
+        
+        // Background color
+        QAction* bgAction = contextMenu.addAction("Background Color...");
+        connect(bgAction, &QAction::triggered, [this]() {
+            QColor current = QColor::fromRgbF(bgColorR_, bgColorG_, bgColorB_);
+            QColor color = QColorDialog::getColor(current, this, "Background Color");
+            if (color.isValid()) {
+                setBackgroundColor(color.redF(), color.greenF(), color.blueF());
+                refresh();
+            }
         });
     }
     
@@ -1525,9 +1583,9 @@ double Viewport3D::getDepthAtPosition(int x, int y) {
 void Viewport3D::createGizmos() {
     if (!renderer_) return;
     
-    const double arrowLength = 40.0;
-    const double arrowRadius = 2.0;
-    const double planeSize = 15.0;
+    const double arrowLength = 100.0;  // Increased for better visibility
+    const double arrowRadius = 5.0;    // Thicker arrows
+    const double planeSize = 30.0;     // Larger plane handles
     
     // === Create arrow gizmos for translation ===
     auto createArrow = [&](double r, double g, double b, double dirX, double dirY, double dirZ) {

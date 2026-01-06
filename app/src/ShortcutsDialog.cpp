@@ -66,60 +66,45 @@ void ShortcutsDialog::setupUI() {
 
 void ShortcutsDialog::populateShortcuts() {
     allShortcuts_ = {
-        // File
+        // File operations
         {"File", "New Project", "Ctrl+N", "Create a new project"},
         {"File", "Open Project", "Ctrl+O", "Open an existing project"},
         {"File", "Save", "Ctrl+S", "Save current project"},
         {"File", "Save As", "Ctrl+Shift+S", "Save project with new name"},
         {"File", "Quit", "Ctrl+Q", "Exit application"},
         
-        // Edit
+        // Edit operations
         {"Edit", "Undo", "Ctrl+Z", "Undo last action"},
         {"Edit", "Redo", "Ctrl+Y", "Redo undone action"},
         {"Edit", "Delete", "Delete", "Delete selected object"},
         {"Edit", "Duplicate", "Ctrl+D", "Duplicate selected object"},
-        {"Edit", "Select All", "Ctrl+A", "Select all objects"},
         
-        // View
-        {"View", "Front View", "Numpad 1", "View from front"},
-        {"View", "Back View", "Ctrl+Numpad 1", "View from back"},
-        {"View", "Right View", "Numpad 3", "View from right"},
-        {"View", "Left View", "Ctrl+Numpad 3", "View from left"},
-        {"View", "Top View", "Numpad 7", "View from top"},
-        {"View", "Bottom View", "Ctrl+Numpad 7", "View from bottom"},
-        {"View", "Isometric", "Numpad 0", "Isometric view"},
-        {"View", "Frame Selected", "F", "Frame selected object"},
-        {"View", "Frame All", "Home", "Frame all objects"},
-        {"View", "Reset View", "R", "Reset camera to default"},
+        // Tools (Blender-like)
+        {"Tools", "Select", "S", "Selection mode"},
+        {"Tools", "Move", "W", "Move/translate mode"},
+        {"Tools", "Rotate", "E", "Rotation mode"},
+        {"Tools", "Scale", "T", "Scale mode"},
         
-        // Tools
-        {"Tools", "Select", "S", "Selection tool"},
-        {"Tools", "Move", "G", "Move/translate tool"},
-        {"Tools", "Rotate", "R", "Rotation tool"},
-        {"Tools", "Scale", "T", "Scale tool"},
+        // Axis constraints (during Move/Rotate/Scale)
+        {"Constraint", "X Axis", "X", "Constrain to X axis"},
+        {"Constraint", "Y Axis", "Y", "Constrain to Y axis"},
+        {"Constraint", "Z Axis", "Z", "Constrain to Z axis"},
         
-        // Create
-        {"Create", "Add Box", "Ctrl+Shift+B", "Create a box"},
-        {"Create", "Add Tube", "Ctrl+Shift+T", "Create a tube"},
-        {"Create", "Add Sphere", "Ctrl+Shift+S", "Create a sphere"},
-        {"Create", "Add Cone", "Ctrl+Shift+C", "Create a cone"},
+        // View controls
+        {"View", "Frame Selected", "F", "Frame selected object in view"},
+        {"View", "Reset View", "Home", "Reset camera to default"},
         
-        // Viewport
-        {"Viewport", "Orbit", "Middle Mouse", "Rotate camera around target"},
-        {"Viewport", "Pan", "Shift+Middle Mouse", "Pan the view"},
-        {"Viewport", "Zoom", "Scroll Wheel", "Zoom in/out"},
-        {"Viewport", "Focus", "Double Click", "Focus on clicked object"},
-        
-        // Panels
-        {"Panels", "Toggle Outliner", "Ctrl+1", "Show/hide outliner"},
-        {"Panels", "Toggle Properties", "Ctrl+2", "Show/hide properties"},
-        {"Panels", "Toggle History", "Ctrl+3", "Show/hide history panel"},
-        {"Panels", "Preferences", "Ctrl+,", "Open preferences"},
+        // Mouse controls
+        {"Mouse", "Select Object", "Left Click", "Select object under cursor"},
+        {"Mouse", "Context Menu", "Right Click", "Show context menu"},
+        {"Mouse", "Orbit Camera", "Middle Drag", "Rotate camera around target"},
+        {"Mouse", "Pan Camera", "Shift+Middle", "Pan the view"},
+        {"Mouse", "Zoom", "Scroll Wheel", "Zoom in/out"},
+        {"Mouse", "Transform", "Left Drag", "Drag selected object (in W/E/T mode)"},
         
         // General
         {"General", "Show Shortcuts", "Ctrl+/", "Show this dialog"},
-        {"General", "Full Screen", "F11", "Toggle fullscreen"},
-        {"General", "Help", "F1", "Open documentation"},
+        {"General", "Preferences", "Ctrl+,", "Open preferences"},
     };
     
     filterShortcuts("");
