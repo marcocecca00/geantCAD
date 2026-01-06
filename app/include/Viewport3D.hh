@@ -208,8 +208,8 @@ private:
     // Background color
     double bgColorR_ = 0.15, bgColorG_ = 0.15, bgColorB_ = 0.20;
     
-    // Proportional scaling
-    bool proportionalScaling_ = true; // Default to proportional
+    // Proportional scaling (false = free scaling like BambuLab slicer)
+    bool proportionalScaling_ = false; // Default to free scaling
     
     // Transform info text overlay
     vtkSmartPointer<vtkTextActor> transformInfoActor_;

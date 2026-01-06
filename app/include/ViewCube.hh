@@ -79,6 +79,7 @@ private:
     int hitTest(const QPoint& pos) const;
     void applyViewOrientation(ViewOrientation orientation);
     void drawCornerIndicators(QPainter& painter);
+    void drawAxisIndicators(QPainter& painter);
     
     // Camera state
     QQuaternion cameraOrientation_;
@@ -93,19 +94,19 @@ private:
     QPoint lastMousePos_;
     
     // Visual settings
-    float cubeSize_ = 60.0f;
-    float perspective_ = 500.0f;
+    float cubeSize_ = 50.0f;  // Compact cube
+    float perspective_ = 400.0f;
     
-    // Colors
-    QColor frontColor_{0, 120, 212};     // Blue
-    QColor backColor_{100, 100, 100};    // Gray
-    QColor leftColor_{212, 120, 0};      // Orange
-    QColor rightColor_{0, 180, 100};     // Green
-    QColor topColor_{180, 60, 60};       // Red
-    QColor bottomColor_{120, 60, 180};   // Purple
-    QColor edgeColor_{60, 60, 60};
-    QColor textColor_{255, 255, 255};
-    QColor hoverColor_{255, 220, 100};   // Yellow highlight
+    // Modern dark theme colors (will be overridden in constructor)
+    QColor frontColor_{60, 70, 85};
+    QColor backColor_{50, 58, 70};
+    QColor leftColor_{55, 65, 78};
+    QColor rightColor_{55, 65, 78};
+    QColor topColor_{70, 82, 100};
+    QColor bottomColor_{45, 52, 62};
+    QColor edgeColor_{90, 100, 115};
+    QColor textColor_{200, 210, 220};
+    QColor hoverColor_{80, 140, 220};  // Accent blue
 
 #ifndef GEANTCAD_NO_VTK
     vtkCamera* camera_ = nullptr;

@@ -214,8 +214,8 @@ void Viewport3D::createGrid() {
     }
     axisLabels_.clear();
     
-    // Grid parameters - LARGER grid for better visibility
-    const double gridSize = 1000.0; // Total grid size (mm) - extended
+    // Grid parameters - 500cm x 500cm = 5000mm x 5000mm
+    const double gridSize = 2500.0; // Half-size = 2500mm (total 5000mm = 500cm)
     const int majorDivisions = static_cast<int>(gridSize / gridSpacing_);
     const int minorSubdivisions = 5; // Minor lines between major lines
     const double minorSpacing = gridSpacing_ / minorSubdivisions;
@@ -1006,10 +1006,15 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
         }
     }
     
-    // Only allow camera control in Select mode (with left button) or always with middle button
-    if (interactionMode_ == InteractionMode::Select) {
+    // Camera control only in Select mode with LEFT button
+    // Middle button always initiates camera orbit (handled by VTK)
+    if (event->button() == Qt::MiddleButton) {
         QVTKOpenGLNativeWidget::mousePressEvent(event);
     }
+    else if (interactionMode_ == InteractionMode::Select && event->button() == Qt::LeftButton) {
+        QVTKOpenGLNativeWidget::mousePressEvent(event);
+    }
+    // In manipulation modes, LEFT button is for object manipulation ONLY
 #else
     QWidget::mousePressEvent(event);
 #endif
@@ -1254,8 +1259,13 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         }
     }
     
-    // Only allow camera control in Select mode (or with middle mouse button which is handled by VTK)
-    if (interactionMode_ == InteractionMode::Select) {
+    // Camera control: only in Select mode with LEFT button
+    // Middle button always works for camera via VTK (handled separately)
+    if (interactionMode_ == InteractionMode::Select && (event->buttons() & Qt::LeftButton)) {
+        QVTKOpenGLNativeWidget::mouseMoveEvent(event);
+    }
+    // Middle button for camera orbit always works
+    else if (event->buttons() & Qt::MiddleButton) {
         QVTKOpenGLNativeWidget::mouseMoveEvent(event);
     }
 #else
@@ -1368,33 +1378,31 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
     // Reset all actors to normal appearance
     for (auto& pair : actors_) {
-        if (!pair.second) continue; // Safety check
+        if (!pair.second) continue;
         
         vtkActor* actor = pair.second.GetPointer();
         VolumeNode* node = pair.first;
         
-        if (!node || !actor) continue; // Safety check
+        if (!node || !actor) continue;
         
         if (node == selectedNode) {
-            // Highlight selected: brighter color + prominent outline
-            // Keep original material color but make it brighter
+            // Subtle selection: keep original color, add thin outline
             if (auto material = node->getMaterial()) {
                 auto& visual = material->getVisual();
-                // Brighten the color for selection
+                // Keep original color, only slightly brighter
                 actor->GetProperty()->SetColor(
-                    std::min(1.0, visual.r * 1.3),
-                    std::min(1.0, visual.g * 1.3),
-                    std::min(1.0, visual.b * 1.3)
+                    std::min(1.0, visual.r * 1.1),
+                    std::min(1.0, visual.g * 1.1),
+                    std::min(1.0, visual.b * 1.1)
                 );
             } else {
-                actor->GetProperty()->SetColor(1.0, 0.8, 0.0); // Yellow/orange highlight
+                actor->GetProperty()->SetColor(0.85, 0.85, 0.85);
             }
-            actor->GetProperty()->SetLineWidth(4.0); // Thicker outline
-            // Enable prominent outline
+            actor->GetProperty()->SetLineWidth(2.0);  // Thinner outline
             actor->GetProperty()->EdgeVisibilityOn();
-            actor->GetProperty()->SetEdgeColor(1.0, 1.0, 0.0); // Bright yellow edge
-            actor->GetProperty()->SetAmbient(0.3); // Add ambient lighting for better visibility
-            actor->GetProperty()->SetSpecular(0.8); // Add specular highlight
+            actor->GetProperty()->SetEdgeColor(0.3, 0.6, 1.0);  // Subtle blue edge
+            actor->GetProperty()->SetAmbient(0.2);
+            actor->GetProperty()->SetSpecular(0.3);  // Less shiny
         } else {
             // Reset to normal
             if (auto material = node->getMaterial()) {
@@ -1405,6 +1413,8 @@ void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
             }
             actor->GetProperty()->SetLineWidth(1.0);
             actor->GetProperty()->EdgeVisibilityOff();
+            actor->GetProperty()->SetAmbient(0.1);
+            actor->GetProperty()->SetSpecular(0.1);
         }
     }
     
@@ -1464,6 +1474,15 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
         connect(scaleAction, &QAction::triggered, [this]() {
             setInteractionMode(InteractionMode::Scale);
             emit viewChanged();
+        });
+        
+        // Scale options submenu
+        QMenu* scaleMenu = contextMenu.addMenu("Scale Options");
+        QAction* propAction = scaleMenu->addAction("Proportional Scaling");
+        propAction->setCheckable(true);
+        propAction->setChecked(proportionalScaling_);
+        connect(propAction, &QAction::triggered, [this](bool checked) {
+            proportionalScaling_ = checked;
         });
         
         contextMenu.addSeparator();
@@ -1616,25 +1635,25 @@ void Viewport3D::createGizmos() {
     
     // Modern Shapr3D-style gizmos - will be scaled dynamically based on camera distance
     
-    // === Create smooth arrow gizmos for translation ===
+    // === Create sleek arrow gizmos for translation (thinner, more elegant) ===
     auto createArrow = [&](double r, double g, double b, double dirX, double dirY, double dirZ) {
-        // Create a smooth, anti-aliased arrow with cylinder shaft and cone tip
+        // Sleek arrow with thin cylinder shaft and small cone tip
         vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
         
-        // Shaft (cylinder)
+        // Shaft (thin cylinder)
         vtkSmartPointer<vtkCylinderSource> shaft = vtkSmartPointer<vtkCylinderSource>::New();
-        shaft->SetHeight(0.7);
-        shaft->SetRadius(0.025);
-        shaft->SetResolution(24);
-        shaft->SetCenter(0, 0.35, 0);
+        shaft->SetHeight(0.75);
+        shaft->SetRadius(0.012);  // Much thinner
+        shaft->SetResolution(16);
+        shaft->SetCenter(0, 0.375, 0);
         shaft->Update();
         
-        // Tip (cone)
+        // Tip (small cone)
         vtkSmartPointer<vtkConeSource> tip = vtkSmartPointer<vtkConeSource>::New();
-        tip->SetHeight(0.3);
-        tip->SetRadius(0.08);
-        tip->SetResolution(24);
-        tip->SetCenter(0, 0.85, 0);
+        tip->SetHeight(0.25);
+        tip->SetRadius(0.04);  // Smaller tip
+        tip->SetResolution(16);
+        tip->SetCenter(0, 0.875, 0);
         tip->SetDirection(0, 1, 0);
         tip->Update();
         
@@ -1707,21 +1726,21 @@ void Viewport3D::createGizmos() {
     gizmoXZPlane_ = createPlaneGizmo(0.5, 0.8, 0.5, "XZ"); // Green-ish
     gizmoYZPlane_ = createPlaneGizmo(0.9, 0.5, 0.5, "YZ"); // Red-ish
     
-    // === Create modern rotation rings (torus) ===
+    // === Create sleek rotation rings (thin torus) ===
     auto createRing = [&](double r, double g, double b, const char* axis) {
-        // Use regular polygon to create ring appearance
+        // Elegant thin ring
         vtkSmartPointer<vtkRegularPolygonSource> ring = vtkSmartPointer<vtkRegularPolygonSource>::New();
         ring->SetNumberOfSides(64);
         ring->SetRadius(1.0);
         ring->SetCenter(0, 0, 0);
-        ring->GeneratePolygonOff();  // Creates a polyline, not filled
+        ring->GeneratePolygonOff();  // Creates a polyline
         ring->Update();
         
-        // Create a tube around the polyline for 3D appearance
+        // Thin tube for sleek appearance
         vtkSmartPointer<vtkTubeFilter> tubeFilter = vtkSmartPointer<vtkTubeFilter>::New();
         tubeFilter->SetInputConnection(ring->GetOutputPort());
-        tubeFilter->SetRadius(0.04);
-        tubeFilter->SetNumberOfSides(16);
+        tubeFilter->SetRadius(0.015);  // Much thinner
+        tubeFilter->SetNumberOfSides(12);
         tubeFilter->Update();
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -1761,8 +1780,8 @@ void Viewport3D::createGizmos() {
         
         vtkSmartPointer<vtkTubeFilter> lineTube = vtkSmartPointer<vtkTubeFilter>::New();
         lineTube->SetInputConnection(line->GetOutputPort());
-        lineTube->SetRadius(0.02);
-        lineTube->SetNumberOfSides(12);
+        lineTube->SetRadius(0.01);  // Thinner line
+        lineTube->SetNumberOfSides(8);
         lineTube->Update();
         
         // Cube at end
@@ -1967,18 +1986,18 @@ void Viewport3D::showGizmo(bool show) {
 }
 
 void Viewport3D::updateGizmoHighlight(int hoveredAxis) {
-    // Brighten the hovered gizmo axis for visual feedback
+    // Subtle hover highlight for gizmo axes
     auto setHighlight = [&](vtkSmartPointer<vtkActor>& actor, bool highlighted, double r, double g, double b) {
         if (!actor) return;
         if (highlighted) {
-            // Brighten color on hover
-            actor->GetProperty()->SetColor(std::min(1.0, r * 1.3), std::min(1.0, g * 1.3), std::min(1.0, b * 1.3));
-            actor->GetProperty()->SetOpacity(1.0);
-            actor->GetProperty()->SetLineWidth(3);
+            // Slightly brighter on hover
+            actor->GetProperty()->SetColor(std::min(1.0, r * 1.15), std::min(1.0, g * 1.15), std::min(1.0, b * 1.15));
+            actor->GetProperty()->SetOpacity(0.95);
+            actor->GetProperty()->SetLineWidth(2);
         } else {
             // Normal color
             actor->GetProperty()->SetColor(r, g, b);
-            actor->GetProperty()->SetOpacity(0.7);
+            actor->GetProperty()->SetOpacity(0.8);
             actor->GetProperty()->SetLineWidth(1);
         }
     };

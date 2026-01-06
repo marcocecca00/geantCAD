@@ -10,8 +10,19 @@ ViewCube::ViewCube(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedSize(100, 100);
-    setAttribute(Qt::WA_TranslucentBackground, false);
+    setFixedSize(120, 120);  // Slightly larger
+    setAttribute(Qt::WA_TranslucentBackground, true);  // Transparent background
+    
+    // Modern colors - dark theme with accent
+    frontColor_ = QColor(60, 70, 85);
+    backColor_ = QColor(50, 58, 70);
+    leftColor_ = QColor(55, 65, 78);
+    rightColor_ = QColor(55, 65, 78);
+    topColor_ = QColor(70, 82, 100);
+    bottomColor_ = QColor(45, 52, 62);
+    edgeColor_ = QColor(90, 100, 115);
+    textColor_ = QColor(200, 210, 220);
+    hoverColor_ = QColor(80, 140, 220);  // Accent blue on hover
     
     // Initialize with isometric view orientation
     cameraOrientation_ = QQuaternion::fromEulerAngles(-30.0f, 45.0f, 0.0f);
@@ -163,55 +174,91 @@ void ViewCube::updateFaces() {
 void ViewCube::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
     
-    // Background
-    painter.fillRect(rect(), QColor(30, 30, 30, 220));
-    painter.setPen(QPen(QColor(80, 80, 80), 1));
-    painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    // Modern rounded background with subtle gradient
+    QLinearGradient bgGrad(0, 0, 0, height());
+    bgGrad.setColorAt(0, QColor(35, 40, 48, 230));
+    bgGrad.setColorAt(1, QColor(25, 28, 35, 230));
+    
+    QPainterPath bgPath;
+    bgPath.addRoundedRect(rect().adjusted(2, 2, -2, -2), 12, 12);
+    painter.fillPath(bgPath, bgGrad);
+    
+    // Subtle border
+    painter.setPen(QPen(QColor(70, 80, 95, 150), 1));
+    painter.drawPath(bgPath);
     
     // Draw faces (already sorted back to front)
     for (size_t i = 0; i < faces_.size(); ++i) {
         const Face& face = faces_[i];
         
-        // Calculate face color based on lighting and hover
+        // Modern gradient fill for faces
         QColor faceColor = face.baseColor;
         if (face.hovered) {
             faceColor = hoverColor_;
         }
         
-        // Simple lighting based on face normal
-        float lightFactor = 0.7f + 0.3f * (static_cast<float>(i) / faces_.size());
+        // Smooth lighting
+        float lightFactor = 0.75f + 0.25f * (static_cast<float>(i) / faces_.size());
         faceColor = QColor(
             static_cast<int>(faceColor.red() * lightFactor),
             static_cast<int>(faceColor.green() * lightFactor),
-            static_cast<int>(faceColor.blue() * lightFactor)
+            static_cast<int>(faceColor.blue() * lightFactor),
+            220
         );
         
-        // Draw face
+        // Draw face with rounded feel
         painter.setBrush(faceColor);
-        painter.setPen(QPen(edgeColor_, 1.5));
+        painter.setPen(QPen(QColor(edgeColor_.red(), edgeColor_.green(), edgeColor_.blue(), 100), 1));
         painter.drawPolygon(face.polygon);
         
-        // Draw label on front-facing faces only (last 3 in sorted order typically)
+        // Draw label on visible faces
         if (i >= faces_.size() - 3) {
             QPointF center = face.polygon.boundingRect().center();
             
-            QFont font = painter.font();
-            font.setPointSize(7);
+            QFont font("SF Pro Display", 8);
+            if (!QFontInfo(font).exactMatch()) {
+                font = QFont("Segoe UI", 8);
+            }
             font.setBold(true);
+            font.setLetterSpacing(QFont::PercentageSpacing, 105);
             painter.setFont(font);
             
-            // Text shadow for readability
-            painter.setPen(QColor(0, 0, 0, 180));
-            painter.drawText(center + QPointF(1, 1), face.label);
+            // Subtle text shadow
+            painter.setPen(QColor(0, 0, 0, 100));
+            painter.drawText(QRectF(center.x() - 20 + 1, center.y() - 6 + 1, 40, 12), Qt::AlignCenter, face.label);
             
-            painter.setPen(textColor_);
-            painter.drawText(center, face.label);
+            // Main text
+            painter.setPen(face.hovered ? Qt::white : textColor_);
+            painter.drawText(QRectF(center.x() - 20, center.y() - 6, 40, 12), Qt::AlignCenter, face.label);
         }
     }
     
-    // Draw corner indicators for isometric views
-    drawCornerIndicators(painter);
+    // Draw axis indicators in corner
+    drawAxisIndicators(painter);
+}
+
+void ViewCube::drawAxisIndicators(QPainter& painter) {
+    // Small axis indicator in bottom-left corner
+    float cx = 22;
+    float cy = height() - 22;
+    float len = 12;
+    
+    // Transform axes by camera orientation
+    QVector3D xAxis = cameraOrientation_.rotatedVector(QVector3D(1, 0, 0));
+    QVector3D yAxis = cameraOrientation_.rotatedVector(QVector3D(0, 1, 0));
+    QVector3D zAxis = cameraOrientation_.rotatedVector(QVector3D(0, 0, 1));
+    
+    // Draw axes (X=red, Y=green, Z=blue)
+    painter.setPen(QPen(QColor(230, 80, 80), 2));
+    painter.drawLine(QPointF(cx, cy), QPointF(cx + xAxis.x() * len, cy - xAxis.y() * len));
+    
+    painter.setPen(QPen(QColor(80, 200, 80), 2));
+    painter.drawLine(QPointF(cx, cy), QPointF(cx + yAxis.x() * len, cy - yAxis.y() * len));
+    
+    painter.setPen(QPen(QColor(80, 140, 230), 2));
+    painter.drawLine(QPointF(cx, cy), QPointF(cx + zAxis.x() * len, cy - zAxis.y() * len));
 }
 
 void ViewCube::drawCornerIndicators(QPainter& painter) {
