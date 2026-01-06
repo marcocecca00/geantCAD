@@ -706,6 +706,13 @@ void MainWindow::connectSignals() {
         outliner_->refresh();
     });
     
+    // Viewport object transformed (from drag)
+    connect(viewport_, &Viewport3D::objectTransformed, this, [this](VolumeNode* node) {
+        inspector_->setNode(node); // Update inspector with new position
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Object moved", 1000);
+    });
+    
     // Set command stack for viewport (for undo/redo of transforms)
     viewport_->setCommandStack(commandStack_);
     

@@ -87,11 +87,13 @@ public:
 signals:
     void selectionChanged(VolumeNode* node);
     void viewChanged();
+    void objectTransformed(VolumeNode* node);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
@@ -130,8 +132,18 @@ private:
     // Picking state
     QPoint lastPickPos_;
     
+    // Manipulation state
+    bool isDragging_ = false;
+    VolumeNode* draggedNode_ = nullptr;
+    QVector3D dragStartWorldPos_;
+    Transform dragStartTransform_;
+    
     // View cube widget
     vtkSmartPointer<vtkOrientationMarkerWidget> viewCubeWidget_;
+    
+    // Helper functions for manipulation
+    QVector3D screenToWorld(int x, int y, double depth = 0.0);
+    double getDepthAtPosition(int x, int y);
 #endif
 };
 

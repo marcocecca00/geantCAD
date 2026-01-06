@@ -4,6 +4,8 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QVector3D>
+#include <cmath>
 
 #ifndef GEANTCAD_NO_VTK
 #include <QVTKOpenGLNativeWidget.h>
@@ -637,11 +639,15 @@ void Viewport3D::updateScene() {
         vtkSmartPointer<vtkTransform> vtkXForm = vtkSmartPointer<vtkTransform>::New();
         
         // Convert QMatrix4x4 to vtkMatrix4x4
+        // QMatrix4x4 uses column-major storage, VTK uses row-major
+        // QMatrix4x4::constData() returns data in column-major order
+        // So we need to transpose when setting VTK matrix
         vtkSmartPointer<vtkMatrix4x4> vtkMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
         const float* data = matrix.constData();
         for (int i = 0; i < 4; ++i) {
             for (int j = 0; j < 4; ++j) {
-                vtkMatrix->SetElement(i, j, data[i * 4 + j]);
+                // Transpose: swap i and j when reading from Qt data
+                vtkMatrix->SetElement(i, j, data[j * 4 + i]);
             }
         }
         vtkXForm->SetMatrix(vtkMatrix);
@@ -667,7 +673,14 @@ void Viewport3D::updateScene() {
         actors_[node] = actor;
     });
     
-    renderer_->ResetCamera();
+    // Don't reset camera during drag operations
+    if (!isDragging_) {
+        // Only reset if scene changed significantly
+        if (actors_.empty()) {
+            renderer_->ResetCamera();
+        }
+    }
+    
     renderWindow_->Render();
 #endif
 }
@@ -827,6 +840,45 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
     // Store mouse position for drag detection
     if (event->button() == Qt::LeftButton) {
         lastPickPos_ = event->pos();
+        
+        // Check if we should start manipulation
+        if (interactionMode_ == InteractionMode::Move && sceneGraph_) {
+            VolumeNode* selected = sceneGraph_->getSelected();
+            if (selected && selected != sceneGraph_->getRoot()) {
+                // Check if we clicked on the selected object
+                int x = event->pos().x();
+                int y = event->pos().y();
+                
+                vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+                picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
+                
+                vtkActor* pickedActor = picker->GetActor();
+                VolumeNode* pickedNode = nullptr;
+                
+                if (pickedActor) {
+                    for (const auto& pair : actors_) {
+                        if (pair.second && pair.second.GetPointer() == pickedActor) {
+                            pickedNode = pair.first;
+                            break;
+                        }
+                    }
+                }
+                
+                // Start dragging if we clicked on the selected object
+                if (pickedNode == selected) {
+                    isDragging_ = true;
+                    draggedNode_ = selected;
+                    dragStartTransform_ = selected->getTransform();
+                    
+                    // Get world position at object center for depth reference
+                    double depth = getDepthAtPosition(x, y);
+                    dragStartWorldPos_ = screenToWorld(x, y, depth);
+                    
+                    // Don't pass to VTK (we handle the drag ourselves)
+                    return;
+                }
+            }
+        }
     }
     
     QVTKOpenGLNativeWidget::mousePressEvent(event);
@@ -835,8 +887,71 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 #endif
 }
 
+void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
+#ifndef GEANTCAD_NO_VTK
+    if (isDragging_ && draggedNode_ && interactionMode_ == InteractionMode::Move) {
+        int x = event->pos().x();
+        int y = event->pos().y();
+        
+        // Calculate new world position at same depth
+        double depth = getDepthAtPosition(lastPickPos_.x(), lastPickPos_.y());
+        QVector3D currentWorldPos = screenToWorld(x, y, depth);
+        
+        // Calculate delta movement in world coordinates
+        QVector3D delta = currentWorldPos - dragStartWorldPos_;
+        
+        // Apply delta to original position
+        QVector3D originalPos = dragStartTransform_.getTranslation();
+        QVector3D newPos = originalPos + delta;
+        
+        // Snap to grid if enabled
+        if (snapToGrid_ && gridSpacing_ > 0) {
+            newPos.setX(std::round(newPos.x() / gridSpacing_) * gridSpacing_);
+            newPos.setY(std::round(newPos.y() / gridSpacing_) * gridSpacing_);
+            newPos.setZ(std::round(newPos.z() / gridSpacing_) * gridSpacing_);
+        }
+        
+        // Update transform directly (we'll commit with undo on release)
+        Transform newTransform = dragStartTransform_;
+        newTransform.setTranslation(newPos);
+        draggedNode_->getTransform() = newTransform;
+        
+        // Update viewport
+        refresh();
+        
+        // Don't pass to VTK
+        return;
+    }
+    
+    QVTKOpenGLNativeWidget::mouseMoveEvent(event);
+#else
+    QWidget::mouseMoveEvent(event);
+#endif
+}
+
 void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
+    // Handle end of drag operation
+    if (isDragging_ && draggedNode_ && event->button() == Qt::LeftButton) {
+        // Create undo command for the entire drag operation
+        if (commandStack_) {
+            Transform finalTransform = draggedNode_->getTransform();
+            // Restore original transform first
+            draggedNode_->getTransform() = dragStartTransform_;
+            // Then execute command (which will apply the new transform)
+            auto cmd = std::make_unique<TransformVolumeCommand>(draggedNode_, finalTransform);
+            commandStack_->execute(std::move(cmd));
+        }
+        
+        emit objectTransformed(draggedNode_);
+        
+        isDragging_ = false;
+        draggedNode_ = nullptr;
+        
+        refresh();
+        return;
+    }
+    
     // Handle picking on left click (if not a drag)
     if (event->button() == Qt::LeftButton) {
         QPoint currentPos = event->pos();
@@ -980,6 +1095,57 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
     
     contextMenu.exec(mapToGlobal(pos));
 #endif
+}
+
+QVector3D Viewport3D::screenToWorld(int x, int y, double depth) {
+    if (!renderer_ || !renderWindow_) {
+        return QVector3D(0, 0, 0);
+    }
+    
+    // Get display coordinates (VTK uses bottom-left origin)
+    int* size = renderWindow_->GetSize();
+    double displayX = static_cast<double>(x);
+    double displayY = static_cast<double>(size[1] - y - 1);
+    
+    // Use renderer to convert display to world coordinates
+    renderer_->SetDisplayPoint(displayX, displayY, depth);
+    renderer_->DisplayToWorld();
+    double* worldPoint = renderer_->GetWorldPoint();
+    
+    // Handle homogeneous coordinates
+    if (worldPoint[3] != 0.0) {
+        return QVector3D(
+            worldPoint[0] / worldPoint[3],
+            worldPoint[1] / worldPoint[3],
+            worldPoint[2] / worldPoint[3]
+        );
+    }
+    
+    return QVector3D(worldPoint[0], worldPoint[1], worldPoint[2]);
+}
+
+double Viewport3D::getDepthAtPosition(int x, int y) {
+    if (!renderer_ || !renderWindow_) {
+        return 0.5; // Middle depth as fallback
+    }
+    
+    // Get display coordinates (VTK uses bottom-left origin)
+    int* size = renderWindow_->GetSize();
+    double displayY = static_cast<double>(size[1] - y - 1);
+    
+    // Pick to get depth at the mouse position
+    vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+    if (picker->Pick(x, displayY, 0, renderer_)) {
+        double* pickPosition = picker->GetPickPosition();
+        // Convert world position back to normalized depth
+        renderer_->SetWorldPoint(pickPosition[0], pickPosition[1], pickPosition[2], 1.0);
+        renderer_->WorldToDisplay();
+        double* displayPoint = renderer_->GetDisplayPoint();
+        return displayPoint[2];
+    }
+    
+    // If no pick, use a default depth (center of view)
+    return 0.5;
 }
 
 #endif // GEANTCAD_NO_VTK
