@@ -35,7 +35,7 @@ private slots:
 private:
     void buildTree();
     QTreeWidgetItem* createTreeItem(VolumeNode* node);
-    QIcon getShapeIcon(ShapeType type) const;
+    QIcon getShapeIcon(ShapeType type, const QColor& materialColor = QColor()) const;
     
     SceneGraph* sceneGraph_;
     QTreeWidgetItem* rootItem_;

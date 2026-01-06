@@ -728,6 +728,13 @@ void Viewport3D::setCommandStack(CommandStack* commandStack) {
 
 void Viewport3D::setInteractionMode(InteractionMode mode) {
     interactionMode_ = mode;
+    
+    // Deactivate measurement mode when switching tools
+    if (mode != InteractionMode::Select && measurementMode_) {
+        measurementMode_ = false;
+        emit measurementModeChanged(false);
+    }
+    
 #ifndef GEANTCAD_NO_VTK
     // Show/hide gizmos based on mode
     updateGizmoPosition();
@@ -1029,18 +1036,15 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         
         if (interactionMode_ == InteractionMode::Move) {
             // Use screen-space delta for more predictable movement
-            // Scale factor depends on camera distance for zoom-independent movement
+            // REDUCED sensitivity for better control
             vtkCamera* camera = renderer_->GetActiveCamera();
             double cameraDistance = camera->GetDistance();
-            double moveFactor = cameraDistance / 500.0; // Normalize to reasonable scale
-            moveFactor = std::max(0.1, std::min(5.0, moveFactor)); // Clamp for stability
-            
-            // Start from original position (not current) for smooth dragging
-            QVector3D startPos = dragStartTransform_.getTranslation();
+            double moveFactor = cameraDistance / 800.0; // Reduced from 500 for slower movement
+            moveFactor = std::max(0.05, std::min(2.0, moveFactor)); // Tighter clamp
             
             // Calculate world delta based on camera orientation
             double* viewUp = camera->GetViewUp();
-            double* viewRight = new double[3];
+            double viewRight[3];
             double* viewDir = camera->GetDirectionOfProjection();
             
             // Cross product for right vector (viewUp x viewDir)
@@ -1056,18 +1060,12 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                 viewRight[2] /= rightLen;
             }
             
-            // Calculate cumulative delta from drag start
-            int totalDeltaX = x - static_cast<int>(dragStartWorldPos_.x()); // Use stored screen pos
-            int totalDeltaY = y - static_cast<int>(dragStartWorldPos_.y());
-            
-            // Actually use the current frame's delta relative to last position for smoother motion
+            // Use smaller delta multiplier for smoother motion
             QVector3D delta(
-                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor * 0.5,
-                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor * 0.5,
-                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor * 0.5
+                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor * 0.3,
+                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor * 0.3,
+                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor * 0.3
             );
-            
-            delete[] viewRight;
             
             // Add delta to current position
             QVector3D currentPos = draggedNode_->getTransform().getTranslation();
@@ -1091,12 +1089,20 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             newTransform.setTranslation(newPos);
             draggedNode_->getTransform() = newTransform;
             
+            // Calculate and emit transform info
+            QVector3D totalMove = newPos - dragStartTransform_.getTranslation();
+            transformInfoText_ = QString("Move: Δ(%1, %2, %3) mm")
+                .arg(totalMove.x(), 0, 'f', 1)
+                .arg(totalMove.y(), 0, 'f', 1)
+                .arg(totalMove.z(), 0, 'f', 1);
+            
             // Update last position for next frame
             lastPickPos_ = event->pos();
             
             // Update gizmo position
             updateGizmoPosition();
             refresh();
+            emit objectTransformed(draggedNode_);
             return; // Don't call parent - prevents camera from moving
         }
         else if (interactionMode_ == InteractionMode::Rotate) {
@@ -1106,17 +1112,22 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             
             // Get current rotation and add incremental rotation
             QQuaternion currentRotation = draggedNode_->getTransform().getRotation();
+            QString axisName = "Z";
+            double rotationAngle = deltaX;
             
             switch (constraintPlane_) {
                 case ConstraintPlane::AxisX:
                 case ConstraintPlane::YZ:
                     // Rotate around X axis
                     currentRotation = QQuaternion::fromAxisAndAngle(1, 0, 0, deltaY) * currentRotation;
+                    axisName = "X";
+                    rotationAngle = deltaY;
                     break;
                 case ConstraintPlane::AxisY:
                 case ConstraintPlane::XZ:
                     // Rotate around Y axis
                     currentRotation = QQuaternion::fromAxisAndAngle(0, 1, 0, deltaX) * currentRotation;
+                    axisName = "Y";
                     break;
                 case ConstraintPlane::AxisZ:
                 case ConstraintPlane::XY:
@@ -1128,11 +1139,21 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             
             draggedNode_->getTransform().setRotation(currentRotation);
             
+            // Calculate total rotation from start (approximate using Euler angles)
+            QVector3D startEuler = dragStartTransform_.getRotation().toEulerAngles();
+            QVector3D currentEuler = currentRotation.toEulerAngles();
+            QVector3D deltaEuler = currentEuler - startEuler;
+            
+            transformInfoText_ = QString("Rotate %1: Δ%2°")
+                .arg(axisName)
+                .arg(deltaEuler.z(), 0, 'f', 1); // Show delta around active axis
+            
             // Update last position for next frame
             lastPickPos_ = event->pos();
             
             updateGizmoPosition();
             refresh();
+            emit objectTransformed(draggedNode_);
             return; // Don't call parent - prevents camera from moving
         }
         else if (interactionMode_ == InteractionMode::Scale) {
@@ -1209,6 +1230,12 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                     default:
                         break;
                 }
+                
+                // Calculate scale info text
+                double scalePercent = (scaleFactor - 1.0) * 100.0;
+                transformInfoText_ = QString("Scale: %1%2%")
+                    .arg(scalePercent > 0 ? "+" : "")
+                    .arg(scalePercent, 0, 'f', 1);
             }
             
             // Update for continuous feedback

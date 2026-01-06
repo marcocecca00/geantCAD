@@ -106,6 +106,9 @@ public:
     void setProportionalScaling(bool enabled) { proportionalScaling_ = enabled; }
     bool isProportionalScaling() const { return proportionalScaling_; }
     
+    // Transform info text (for status display)
+    QString getTransformInfo() const { return transformInfoText_; }
+    
     // Rendering
     void refresh();
     
@@ -122,6 +125,7 @@ signals:
     void viewChanged();
     void objectTransformed(VolumeNode* node);
     void pointPicked(const QVector3D& point);  // For measurement tool
+    void measurementModeChanged(bool enabled);  // Notify when measurement mode changes
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -205,6 +209,10 @@ private:
     
     // Proportional scaling
     bool proportionalScaling_ = true; // Default to proportional
+    
+    // Transform info text overlay
+    vtkSmartPointer<vtkActor> transformInfoActor_;
+    QString transformInfoText_;
     
     // Helper functions for manipulation
     QVector3D screenToWorld(int x, int y, double depth = 0.0);

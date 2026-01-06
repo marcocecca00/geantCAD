@@ -10,6 +10,7 @@
 #include <QPainter>
 #include "../../core/include/VolumeNode.hh"
 #include "../../core/include/Shape.hh"
+#include "../../core/include/Material.hh"
 
 Q_DECLARE_METATYPE(geantcad::VolumeNode*)
 
@@ -88,20 +89,26 @@ namespace {
     }
 }
 
-QIcon Outliner::getShapeIcon(ShapeType type) const {
-    // Create custom icons for each shape type
+QIcon Outliner::getShapeIcon(ShapeType type, const QColor& materialColor) const {
+    // Create custom icons for each shape type using the material color
     QPixmap pixmap(16, 16);
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
     
-    QColor color;
+    // Use material color if valid, otherwise fall back to type-based color
+    QColor color = materialColor.isValid() ? materialColor : QColor("#808080");
+    
+    // Ensure the color is bright enough to be visible
+    if (color.lightness() < 80) {
+        color = color.lighter(150);
+    }
+    
+    painter.setPen(QPen(color, 1.5));
+    painter.setBrush(color.darker(130));
     
     switch (type) {
         case ShapeType::Box:
-            color = QColor("#3794ff"); // Blue
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             painter.drawRect(2, 4, 12, 8);
             painter.drawLine(2, 4, 5, 1);
             painter.drawLine(14, 4, 17, 1);
@@ -109,9 +116,6 @@ QIcon Outliner::getShapeIcon(ShapeType type) const {
             break;
             
         case ShapeType::Tube:
-            color = QColor("#4ec9b0"); // Teal
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             painter.drawEllipse(3, 1, 10, 4);
             painter.drawLine(3, 3, 3, 12);
             painter.drawLine(13, 3, 13, 12);
@@ -119,16 +123,10 @@ QIcon Outliner::getShapeIcon(ShapeType type) const {
             break;
             
         case ShapeType::Sphere:
-            color = QColor("#ce9178"); // Orange
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             painter.drawEllipse(1, 1, 14, 14);
             break;
             
         case ShapeType::Cone:
-            color = QColor("#dcdcaa"); // Yellow
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             {
                 QPolygon poly;
                 poly << QPoint(8, 1) << QPoint(2, 14) << QPoint(14, 14);
@@ -137,9 +135,6 @@ QIcon Outliner::getShapeIcon(ShapeType type) const {
             break;
             
         case ShapeType::Trd:
-            color = QColor("#c586c0"); // Purple
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             {
                 QPolygon poly;
                 poly << QPoint(4, 2) << QPoint(12, 2) << QPoint(14, 14) << QPoint(2, 14);
@@ -148,9 +143,6 @@ QIcon Outliner::getShapeIcon(ShapeType type) const {
             break;
             
         case ShapeType::Polycone:
-            color = QColor("#6a9955"); // Green
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             painter.drawEllipse(2, 2, 12, 4);
             painter.drawLine(2, 4, 4, 12);
             painter.drawLine(14, 4, 12, 12);
@@ -158,9 +150,6 @@ QIcon Outliner::getShapeIcon(ShapeType type) const {
             break;
             
         case ShapeType::Polyhedra:
-            color = QColor("#569cd6"); // Light blue
-            painter.setPen(QPen(color, 1.2));
-            painter.setBrush(color.darker(150));
             {
                 // Hexagon
                 QPolygon poly;
@@ -171,8 +160,6 @@ QIcon Outliner::getShapeIcon(ShapeType type) const {
             break;
             
         default:
-            color = QColor("#808080"); // Gray
-            painter.setPen(QPen(color, 1.2));
             painter.drawRect(3, 3, 10, 10);
             break;
     }
@@ -192,12 +179,22 @@ QTreeWidgetItem* Outliner::createTreeItem(VolumeNode* node) {
     item->setCheckState(COL_VISIBLE, node->isVisible() ? Qt::Checked : Qt::Unchecked);
     item->setToolTip(COL_VISIBLE, "Toggle visibility");
     
-    // Set icon based on shape type
+    // Get material color for icon
+    QColor materialColor;
+    if (auto material = node->getMaterial()) {
+        const auto& visual = material->getVisual();
+        materialColor.setRgbF(visual.r, visual.g, visual.b);
+    }
+    
+    // Set icon based on shape type with material color
     if (node->getShape()) {
-        item->setIcon(COL_NAME, getShapeIcon(node->getShape()->getType()));
+        item->setIcon(COL_NAME, getShapeIcon(node->getShape()->getType(), materialColor));
         
-        // Build tooltip with shape info
+        // Build tooltip with shape and material info
         QString tooltip = QString("Shape: %1").arg(shapeTypeName(node->getShape()->getType()));
+        if (auto material = node->getMaterial()) {
+            tooltip += QString("\nMaterial: %1").arg(QString::fromStdString(material->getName()));
+        }
         item->setToolTip(COL_NAME, tooltip);
     } else {
         // Default icon for nodes without shape (groups/containers)

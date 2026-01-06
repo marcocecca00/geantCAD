@@ -581,10 +581,26 @@ void MainWindow::setupDockWidgets() {
     
     connect(viewport_, &Viewport3D::pointPicked, measurementTool_, &MeasurementTool::addPoint);
     
+    // When viewport deactivates measurement mode (e.g., when switching tools), notify measurement tool
+    connect(viewport_, &Viewport3D::measurementModeChanged, this, [this](bool enabled) {
+        if (!enabled) {
+            // Deselect measurement buttons
+            measurementTool_->setMode(MeasurementTool::MeasureMode::None);
+        }
+    });
+    
     // Connect measurement signals to status bar
     connect(measurementTool_, &MeasurementTool::measurementAdded, this, [this](const MeasurementTool::Measurement& m) {
         statusBar_->showMessage(m.description, 3000);
         viewport_->refresh();
+    });
+    
+    // Show transform info in status bar during manipulation
+    connect(viewport_, &Viewport3D::objectTransformed, this, [this](VolumeNode*) {
+        QString info = viewport_->getTransformInfo();
+        if (!info.isEmpty()) {
+            statusBar_->showMessage(info);
+        }
     });
     
     // Connect clipping widget to viewport refresh
