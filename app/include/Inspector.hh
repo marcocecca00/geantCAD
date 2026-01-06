@@ -36,6 +36,7 @@ private slots:
     void onNameChanged();
     void onMaterialChanged();
     void onMaterialColorClicked();
+    void onCreateCustomMaterial();
     void onSDChanged();
     void onOpticalChanged();
     void onOpticalPresetChanged();
@@ -61,6 +62,7 @@ private:
     // Material
     QComboBox* materialCombo_;
     QPushButton* materialColorBtn_;
+    QPushButton* customMaterialBtn_;
     
     // Geometry (Shape Parameters)
     CollapsibleGroupBox* geometryGroup_;

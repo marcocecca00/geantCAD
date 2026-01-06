@@ -156,6 +156,7 @@ add_executable(geantcad
     app/src/ThemeManager.cpp
     app/src/PreferencesDialog.cpp
     app/src/ShortcutsDialog.cpp
+    app/src/MaterialEditorDialog.cpp
     # Headers (for MOC)
     app/include/Toolbar.hh
     app/include/MainWindow.hh
@@ -180,6 +181,7 @@ add_executable(geantcad
     app/include/ThemeManager.hh
     app/include/PreferencesDialog.hh
     app/include/ShortcutsDialog.hh
+    app/include/MaterialEditorDialog.hh
     # Resources
     app/resources/resources.qrc
 )

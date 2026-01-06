@@ -1,5 +1,6 @@
 #include "Inspector.hh"
 #include "CollapsibleGroupBox.hh"
+#include "MaterialEditorDialog.hh"
 #include "../../core/include/Material.hh"
 #include "../../core/include/NistMaterialDatabase.hh"
 #include "../../core/include/Shape.hh"
@@ -133,6 +134,13 @@ void Inspector::setupUI() {
     materialRowLayout->addWidget(materialColorBtn_);
     
     materialLayout->addLayout(materialRowLayout);
+    
+    // Custom material button
+    customMaterialBtn_ = new QPushButton("✨ Create Custom Material...", this);
+    customMaterialBtn_->setToolTip("Create a custom material with specific composition");
+    customMaterialBtn_->setCursor(Qt::PointingHandCursor);
+    connect(customMaterialBtn_, &QPushButton::clicked, this, &Inspector::onCreateCustomMaterial);
+    materialLayout->addWidget(customMaterialBtn_);
     
     CollapsibleGroupBox* materialCollapsible = new CollapsibleGroupBox("Material", this);
     materialCollapsible->setContent(materialContent);
@@ -648,6 +656,28 @@ void Inspector::onMaterialColorClicked() {
         // Refresh viewport
         emit nodeChanged(currentNode_);
     }
+}
+
+void Inspector::onCreateCustomMaterial() {
+    MaterialEditorDialog dialog(this);
+    
+    connect(&dialog, &MaterialEditorDialog::materialCreated, this, [this](std::shared_ptr<Material> material) {
+        if (!currentNode_ || !material) return;
+        
+        if (commandStack_) {
+            auto cmd = std::make_unique<ModifyMaterialCommand>(currentNode_, material);
+            commandStack_->execute(std::move(cmd));
+        } else {
+            currentNode_->setMaterial(material);
+        }
+        
+        // Update color preview
+        updateMaterialColorPreview(material);
+        
+        emit nodeChanged(currentNode_);
+    });
+    
+    dialog.exec();
 }
 
 void Inspector::onSDChanged() {

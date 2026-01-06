@@ -46,6 +46,7 @@
 #include <vtkDiskSource.h>
 #include <vtkTubeFilter.h>
 #include <vtkRegularPolygonSource.h>
+// vtkVectorText requires FreeType - using cone markers instead
 #include <QMenu>
 #include <QContextMenuEvent>
 #include "../../core/include/Command.hh"
@@ -164,6 +165,24 @@ void Viewport3D::setSnapToGrid(bool enabled) {
     snapToGrid_ = enabled;
 }
 
+void Viewport3D::setBackgroundColor(double r, double g, double b) {
+    bgColorR_ = r;
+    bgColorG_ = g;
+    bgColorB_ = b;
+#ifndef GEANTCAD_NO_VTK
+    if (renderer_) {
+        renderer_->SetBackground(r, g, b);
+        if (renderWindow_) renderWindow_->Render();
+    }
+#endif
+}
+
+void Viewport3D::getBackgroundColor(double& r, double& g, double& b) const {
+    r = bgColorR_;
+    g = bgColorG_;
+    b = bgColorB_;
+}
+
 void Viewport3D::createGrid() {
     if (!renderer_) return;
     
@@ -185,8 +204,14 @@ void Viewport3D::createGrid() {
         axisZActor_ = nullptr;
     }
     
-    // Grid parameters
-    const double gridSize = 500.0; // Total grid size (mm)
+    // Remove axis labels
+    for (auto& label : axisLabels_) {
+        if (label) renderer_->RemoveActor(label);
+    }
+    axisLabels_.clear();
+    
+    // Grid parameters - LARGER grid for better visibility
+    const double gridSize = 1000.0; // Total grid size (mm) - extended
     const int majorDivisions = static_cast<int>(gridSize / gridSpacing_);
     const int minorSubdivisions = 5; // Minor lines between major lines
     const double minorSpacing = gridSpacing_ / minorSubdivisions;
@@ -337,6 +362,32 @@ void Viewport3D::createGrid() {
     axisZActor_->SetPickable(false);
     renderer_->AddActor(axisZActor_);
     
+    // Create axis markers (cones at positive ends) instead of text labels
+    auto createAxisMarker = [&](double x, double y, double z, double dirX, double dirY, double dirZ, double r, double g, double b) {
+        vtkSmartPointer<vtkConeSource> cone = vtkSmartPointer<vtkConeSource>::New();
+        cone->SetHeight(30);
+        cone->SetRadius(8);
+        cone->SetResolution(16);
+        cone->SetDirection(dirX, dirY, dirZ);
+        
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(cone->GetOutputPort());
+        
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->GetProperty()->SetColor(r, g, b);
+        actor->SetPosition(x, y, z);
+        actor->SetPickable(false);
+        
+        renderer_->AddActor(actor);
+        axisLabels_.push_back(actor);
+    };
+    
+    // Add cone markers at the positive end of each axis
+    createAxisMarker(gridSize + 15, 0, 0, 1, 0, 0, 0.8, 0.2, 0.2);  // Red X
+    createAxisMarker(0, gridSize + 15, 0, 0, 1, 0, 0.2, 0.8, 0.2);  // Green Y
+    createAxisMarker(0, 0, gridSize + 15, 0, 0, 1, 0.2, 0.4, 0.9);  // Blue Z
+    
     // Apply visibility
     updateGrid();
 }
@@ -353,6 +404,12 @@ void Viewport3D::updateGrid() {
     }
     if (axisZActor_) {
         axisZActor_->SetVisibility(gridVisible_);
+    }
+    // Update axis labels visibility
+    for (auto& label : axisLabels_) {
+        if (label) {
+            label->SetVisibility(gridVisible_);
+        }
     }
 }
 #endif
@@ -430,36 +487,9 @@ void Viewport3D::setupViewCube() {
 #ifdef GEANTCAD_NO_VTK
     // No-op without VTK
 #else
-    if (!interactor_) return;
-    
-    // Create a cube actor for the view cube
-    vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
-    cube->SetXLength(1.0);
-    cube->SetYLength(1.0);
-    cube->SetZLength(1.0);
-    cube->SetCenter(0, 0, 0);
-    
-    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(cube->GetOutputPort());
-    
-    vtkSmartPointer<vtkActor> cubeActor = vtkSmartPointer<vtkActor>::New();
-    cubeActor->SetMapper(mapper);
-    
-    // Style the cube: wireframe with colored faces
-    cubeActor->GetProperty()->SetRepresentationToWireframe();
-    cubeActor->GetProperty()->SetColor(0.8, 0.8, 0.8);
-    cubeActor->GetProperty()->SetLineWidth(2.0);
-    cubeActor->GetProperty()->SetOpacity(0.8);
-    
-    // Create orientation marker widget with cube
-    viewCubeWidget_ = vtkSmartPointer<vtkOrientationMarkerWidget>::New();
-    viewCubeWidget_->SetOrientationMarker(cubeActor);
-    viewCubeWidget_->SetInteractor(interactor_);
-    viewCubeWidget_->SetEnabled(1);
-    viewCubeWidget_->InteractiveOn();
-    
-    // Position in bottom-right corner
-    viewCubeWidget_->SetViewport(0.0, 0.0, 0.2, 0.2);
+    // The Qt-based ViewCube in top-right is the only one we use now
+    // No VTK orientation marker widget needed - it's redundant
+    viewCubeWidget_ = nullptr;
 #endif
 }
 
@@ -728,6 +758,14 @@ void Viewport3D::setProjectionMode(ProjectionMode mode) {
 #endif
 }
 
+void Viewport3D::setMeasurementMode(bool enabled) {
+    measurementMode_ = enabled;
+    if (enabled) {
+        // Switch to select mode when measurement is active
+        interactionMode_ = InteractionMode::Select;
+    }
+}
+
 void Viewport3D::keyPressEvent(QKeyEvent* event) {
     // Handle keyboard shortcuts
     switch (event->key()) {
@@ -981,26 +1019,59 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
     if (isDragging_ && draggedNode_) {
+        // IMPORTANT: Don't call parent class when dragging to prevent camera movement
         int x = event->pos().x();
         int y = event->pos().y();
         
+        // Calculate screen delta for predictable movement
+        int deltaX = x - lastPickPos_.x();
+        int deltaY = y - lastPickPos_.y();
+        
         if (interactionMode_ == InteractionMode::Move) {
-            // Get the plane point (current object position)
-            QVector3D planePoint = dragStartTransform_.getTranslation();
+            // Use screen-space delta for more predictable movement
+            // Scale factor depends on camera distance for zoom-independent movement
+            vtkCamera* camera = renderer_->GetActiveCamera();
+            double cameraDistance = camera->GetDistance();
+            double moveFactor = cameraDistance / 500.0; // Normalize to reasonable scale
+            moveFactor = std::max(0.1, std::min(5.0, moveFactor)); // Clamp for stability
             
-            // Calculate ray from screen position
-            QVector3D rayStart = screenToWorld(x, y, 0.0);
-            QVector3D rayEnd = screenToWorld(x, y, 1.0);
-            QVector3D rayDir = (rayEnd - rayStart).normalized();
+            // Start from original position (not current) for smooth dragging
+            QVector3D startPos = dragStartTransform_.getTranslation();
             
-            QVector3D newPos = planePoint;
+            // Calculate world delta based on camera orientation
+            double* viewUp = camera->GetViewUp();
+            double* viewRight = new double[3];
+            double* viewDir = camera->GetDirectionOfProjection();
             
-            // Always use XY plane for movement (ground plane) - most intuitive
-            if (std::abs(rayDir.z()) > 0.0001) {
-                double t = (planePoint.z() - rayStart.z()) / rayDir.z();
-                newPos = rayStart + t * rayDir;
-                newPos.setZ(planePoint.z()); // Keep Z fixed
+            // Cross product for right vector (viewUp x viewDir)
+            viewRight[0] = viewUp[1] * viewDir[2] - viewUp[2] * viewDir[1];
+            viewRight[1] = viewUp[2] * viewDir[0] - viewUp[0] * viewDir[2];
+            viewRight[2] = viewUp[0] * viewDir[1] - viewUp[1] * viewDir[0];
+            
+            // Normalize
+            double rightLen = std::sqrt(viewRight[0]*viewRight[0] + viewRight[1]*viewRight[1] + viewRight[2]*viewRight[2]);
+            if (rightLen > 0.0001) {
+                viewRight[0] /= rightLen;
+                viewRight[1] /= rightLen;
+                viewRight[2] /= rightLen;
             }
+            
+            // Calculate cumulative delta from drag start
+            int totalDeltaX = x - static_cast<int>(dragStartWorldPos_.x()); // Use stored screen pos
+            int totalDeltaY = y - static_cast<int>(dragStartWorldPos_.y());
+            
+            // Actually use the current frame's delta relative to last position for smoother motion
+            QVector3D delta(
+                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor * 0.5,
+                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor * 0.5,
+                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor * 0.5
+            );
+            
+            delete[] viewRight;
+            
+            // Add delta to current position
+            QVector3D currentPos = draggedNode_->getTransform().getTranslation();
+            QVector3D newPos = currentPos + delta;
             
             // Apply smart snap (alignment with other objects)
             newPos = applySmartSnap(newPos, draggedNode_);
@@ -1016,52 +1087,61 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             }
             
             // Update transform
-            Transform newTransform = dragStartTransform_;
+            Transform newTransform = draggedNode_->getTransform();
             newTransform.setTranslation(newPos);
             draggedNode_->getTransform() = newTransform;
+            
+            // Update last position for next frame
+            lastPickPos_ = event->pos();
             
             // Update gizmo position
             updateGizmoPosition();
             refresh();
-            return;
+            return; // Don't call parent - prevents camera from moving
         }
         else if (interactionMode_ == InteractionMode::Rotate) {
-            // Calculate rotation from mouse movement
+            // Calculate rotation from mouse movement (use delta from last frame)
             double deltaX = (x - lastPickPos_.x()) * 0.5; // Degrees per pixel
             double deltaY = (y - lastPickPos_.y()) * 0.5;
             
-            Transform newTransform = dragStartTransform_;
-            QQuaternion rotation = dragStartTransform_.getRotation();
+            // Get current rotation and add incremental rotation
+            QQuaternion currentRotation = draggedNode_->getTransform().getRotation();
             
             switch (constraintPlane_) {
                 case ConstraintPlane::AxisX:
                 case ConstraintPlane::YZ:
                     // Rotate around X axis
-                    rotation = QQuaternion::fromAxisAndAngle(1, 0, 0, deltaY) * rotation;
+                    currentRotation = QQuaternion::fromAxisAndAngle(1, 0, 0, deltaY) * currentRotation;
                     break;
                 case ConstraintPlane::AxisY:
                 case ConstraintPlane::XZ:
                     // Rotate around Y axis
-                    rotation = QQuaternion::fromAxisAndAngle(0, 1, 0, deltaX) * rotation;
+                    currentRotation = QQuaternion::fromAxisAndAngle(0, 1, 0, deltaX) * currentRotation;
                     break;
                 case ConstraintPlane::AxisZ:
                 case ConstraintPlane::XY:
                 default:
                     // Rotate around Z axis
-                    rotation = QQuaternion::fromAxisAndAngle(0, 0, 1, deltaX) * rotation;
+                    currentRotation = QQuaternion::fromAxisAndAngle(0, 0, 1, deltaX) * currentRotation;
                     break;
             }
             
-            newTransform.setRotation(rotation);
-            draggedNode_->getTransform() = newTransform;
+            draggedNode_->getTransform().setRotation(currentRotation);
             
+            // Update last position for next frame
+            lastPickPos_ = event->pos();
+            
+            updateGizmoPosition();
             refresh();
-            return;
+            return; // Don't call parent - prevents camera from moving
         }
         else if (interactionMode_ == InteractionMode::Scale) {
             // Calculate scale from mouse movement (right = bigger, left = smaller)
             double scaleFactor = 1.0 + (x - lastPickPos_.x()) * 0.01;
             scaleFactor = std::max(0.9, std::min(1.1, scaleFactor)); // Clamp for stability
+            
+            // Determine if we should scale proportionally
+            bool scaleAll = proportionalScaling_ || constraintPlane_ == ConstraintPlane::None;
             
             // For shapes, we modify the shape parameters based on type
             // This is more Geant4-like (shape dimensions matter, not transform scale)
@@ -1073,20 +1153,20 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                 switch (type) {
                     case ShapeType::Box: {
                         if (auto* p = shape->getParamsAs<BoxParams>()) {
-                            if (constraintPlane_ == ConstraintPlane::AxisX || constraintPlane_ == ConstraintPlane::None)
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisX)
                                 p->x = std::max(1.0, p->x * scaleFactor);
-                            if (constraintPlane_ == ConstraintPlane::AxisY || constraintPlane_ == ConstraintPlane::None)
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisY)
                                 p->y = std::max(1.0, p->y * scaleFactor);
-                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisZ)
                                 p->z = std::max(1.0, p->z * scaleFactor);
                         }
                         break;
                     }
                     case ShapeType::Tube: {
                         if (auto* p = shape->getParamsAs<TubeParams>()) {
-                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisZ)
                                 p->dz = std::max(1.0, p->dz * scaleFactor);
-                            if (constraintPlane_ != ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None) {
+                            if (scaleAll || constraintPlane_ != ConstraintPlane::AxisZ) {
                                 p->rmax = std::max(1.0, p->rmax * scaleFactor);
                                 p->rmin = std::max(0.0, p->rmin * scaleFactor);
                             }
@@ -1102,9 +1182,9 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                     }
                     case ShapeType::Cone: {
                         if (auto* p = shape->getParamsAs<ConeParams>()) {
-                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisZ)
                                 p->dz = std::max(1.0, p->dz * scaleFactor);
-                            if (constraintPlane_ != ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None) {
+                            if (scaleAll || constraintPlane_ != ConstraintPlane::AxisZ) {
                                 p->rmax1 = std::max(1.0, p->rmax1 * scaleFactor);
                                 p->rmax2 = std::max(0.0, p->rmax2 * scaleFactor);
                             }
@@ -1113,15 +1193,15 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                     }
                     case ShapeType::Trd: {
                         if (auto* p = shape->getParamsAs<TrdParams>()) {
-                            if (constraintPlane_ == ConstraintPlane::AxisX || constraintPlane_ == ConstraintPlane::None) {
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisX) {
                                 p->dx1 = std::max(1.0, p->dx1 * scaleFactor);
                                 p->dx2 = std::max(1.0, p->dx2 * scaleFactor);
                             }
-                            if (constraintPlane_ == ConstraintPlane::AxisY || constraintPlane_ == ConstraintPlane::None) {
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisY) {
                                 p->dy1 = std::max(1.0, p->dy1 * scaleFactor);
                                 p->dy2 = std::max(1.0, p->dy2 * scaleFactor);
                             }
-                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                            if (scaleAll || constraintPlane_ == ConstraintPlane::AxisZ)
                                 p->dz = std::max(1.0, p->dz * scaleFactor);
                         }
                         break;
@@ -1182,6 +1262,37 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
         if (delta.manhattanLength() < moveThreshold && renderer_ && renderWindow_) {
             int x = event->pos().x();
             int y = event->pos().y();
+            
+            // Measurement mode: emit 3D point for measurement tool
+            if (measurementMode_) {
+                vtkSmartPointer<vtkCellPicker> picker = vtkSmartPointer<vtkCellPicker>::New();
+                picker->SetTolerance(0.005);
+                
+                if (picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_)) {
+                    double* pickPos = picker->GetPickPosition();
+                    QVector3D point(pickPos[0], pickPos[1], pickPos[2]);
+                    emit pointPicked(point);
+                } else {
+                    // If no object was hit, project onto the XY plane at Z=0
+                    QVector3D rayStart = screenToWorld(x, y, 0.0);
+                    QVector3D rayEnd = screenToWorld(x, y, 1.0);
+                    QVector3D rayDir = (rayEnd - rayStart).normalized();
+                    
+                    // Intersect with Z=0 plane
+                    if (std::abs(rayDir.z()) > 0.0001) {
+                        double t = -rayStart.z() / rayDir.z();
+                        if (t > 0) {
+                            QVector3D point = rayStart + t * rayDir;
+                            emit pointPicked(point);
+                        }
+                    }
+                }
+                
+                if (renderWindow_) {
+                    renderWindow_->Render();
+                }
+                return;
+            }
             
             vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
             picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
@@ -1522,7 +1633,45 @@ void Viewport3D::updateGizmoPosition() {
     // Get object position
     QVector3D pos = selected->getTransform().getTranslation();
     
-    // Position all gizmo actors
+    // Calculate object bounding box size to offset gizmos outside object
+    double objectRadius = 30.0; // Default minimum offset
+    if (selected->getShape()) {
+        Shape* shape = selected->getShape();
+        switch (shape->getType()) {
+            case ShapeType::Box:
+                if (auto* p = shape->getParamsAs<BoxParams>()) {
+                    objectRadius = std::max({p->x, p->y, p->z}) * 0.5 + 10.0;
+                }
+                break;
+            case ShapeType::Sphere:
+                if (auto* p = shape->getParamsAs<SphereParams>()) {
+                    objectRadius = p->rmax + 10.0;
+                }
+                break;
+            case ShapeType::Tube:
+                if (auto* p = shape->getParamsAs<TubeParams>()) {
+                    objectRadius = std::max(p->rmax, p->dz) + 10.0;
+                }
+                break;
+            case ShapeType::Cone:
+                if (auto* p = shape->getParamsAs<ConeParams>()) {
+                    objectRadius = std::max(std::max(p->rmax1, p->rmax2), p->dz) + 10.0;
+                }
+                break;
+            case ShapeType::Trd:
+                if (auto* p = shape->getParamsAs<TrdParams>()) {
+                    objectRadius = std::max({p->dx1, p->dx2, p->dy1, p->dy2, p->dz}) + 10.0;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    
+    // Gizmo scale based on object size (minimum 40, scale with object)
+    double gizmoScale = std::max(40.0, objectRadius * 1.2);
+    
+    // Position all gizmo actors at object position
     auto positionActor = [&](vtkSmartPointer<vtkActor>& actor) {
         if (actor) {
             actor->SetPosition(pos.x(), pos.y(), pos.z());

@@ -98,6 +98,14 @@ public:
     void setSnapToGrid(bool enabled);
     bool isSnapToGrid() const { return snapToGrid_; }
     
+    // Background color
+    void setBackgroundColor(double r, double g, double b);
+    void getBackgroundColor(double& r, double& g, double& b) const;
+    
+    // Proportional scaling toggle
+    void setProportionalScaling(bool enabled) { proportionalScaling_ = enabled; }
+    bool isProportionalScaling() const { return proportionalScaling_; }
+    
     // Rendering
     void refresh();
     
@@ -105,10 +113,15 @@ public:
     vtkRenderer* getRenderer() const;
     vtkCamera* getCamera() const;
 
+    // Measurement mode
+    void setMeasurementMode(bool enabled);
+    bool isMeasurementMode() const { return measurementMode_; }
+
 signals:
     void selectionChanged(VolumeNode* node);
     void viewChanged();
     void objectTransformed(VolumeNode* node);
+    void pointPicked(const QVector3D& point);  // For measurement tool
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -134,6 +147,7 @@ private:
     InteractionMode interactionMode_ = InteractionMode::Select;
     ConstraintPlane constraintPlane_ = ConstraintPlane::XY; // Default to XY plane (ground)
     ProjectionMode projectionMode_ = ProjectionMode::Perspective;
+    bool measurementMode_ = false;  // For measurement tool picking
     
 #ifndef GEANTCAD_NO_VTK
     vtkSmartPointer<vtkRenderer> renderer_;
@@ -182,6 +196,15 @@ private:
     // Smart guides (alignment lines)
     std::vector<vtkSmartPointer<vtkActor>> guideActors_;
     double snapThreshold_ = 10.0; // Distance threshold for snap suggestion (mm)
+    
+    // Axis labels
+    std::vector<vtkSmartPointer<vtkActor>> axisLabels_;
+    
+    // Background color
+    double bgColorR_ = 0.15, bgColorG_ = 0.15, bgColorB_ = 0.20;
+    
+    // Proportional scaling
+    bool proportionalScaling_ = true; // Default to proportional
     
     // Helper functions for manipulation
     QVector3D screenToWorld(int x, int y, double depth = 0.0);

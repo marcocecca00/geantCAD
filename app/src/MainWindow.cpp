@@ -15,6 +15,7 @@
 #include <QSettings>
 #include <QByteArray>
 #include <QResizeEvent>
+#include <QColorDialog>
 
 #ifndef GEANTCAD_NO_VTK
 #include <vtkSmartPointer.h>
@@ -473,6 +474,22 @@ void MainWindow::setupMenus() {
         toggleGridAction->setChecked(viewport_->isGridVisible());
     });
     
+    viewMenu->addSeparator();
+    
+    // Background color
+    viewMenu->addAction("&Background Color...", this, [this]() {
+        double r, g, b;
+        viewport_->getBackgroundColor(r, g, b);
+        QColor currentColor;
+        currentColor.setRgbF(r, g, b);
+        
+        QColor newColor = QColorDialog::getColor(currentColor, this, "Choose Background Color");
+        if (newColor.isValid()) {
+            viewport_->setBackgroundColor(newColor.redF(), newColor.greenF(), newColor.blueF());
+            statusBar_->showMessage("Background color changed", 1000);
+        }
+    });
+    
     // Generate menu
     QMenu* generateMenu = menuBar->addMenu("&Generate");
     QAction* genAction = generateMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogNewFolder), "&Generate Geant4 Project...", this, [this]() { onGenerate(); });
@@ -551,6 +568,24 @@ void MainWindow::setupDockWidgets() {
     measureDock_->hide(); // Hidden by default
     
     addDockWidget(Qt::RightDockWidgetArea, measureDock_);
+    
+    // Connect measurement tool to viewport
+    connect(measurementTool_, &MeasurementTool::modeChanged, this, [this](MeasurementTool::MeasureMode mode) {
+        bool measuring = (mode != MeasurementTool::MeasureMode::None);
+        viewport_->setMeasurementMode(measuring);
+        
+        if (measuring) {
+            statusBar_->showMessage("Click on objects to measure. ESC to cancel.", 5000);
+        }
+    });
+    
+    connect(viewport_, &Viewport3D::pointPicked, measurementTool_, &MeasurementTool::addPoint);
+    
+    // Connect measurement signals to status bar
+    connect(measurementTool_, &MeasurementTool::measurementAdded, this, [this](const MeasurementTool::Measurement& m) {
+        statusBar_->showMessage(m.description, 3000);
+        viewport_->refresh();
+    });
     
     // Connect clipping widget to viewport refresh
     connect(clippingWidget_, &ClippingPlaneWidget::planeChanged, this, [this]() {
