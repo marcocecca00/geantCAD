@@ -1,0 +1,39 @@
+#include "DetectorConstruction.hh"
+#include <G4SystemOfUnits.hh>
+#include <G4PhysicalVolumeStore.hh>
+#include <G4LogicalVolumeStore.hh>
+#include <G4SDManager.hh>
+
+DetectorConstruction::DetectorConstruction() {
+}
+
+DetectorConstruction::~DetectorConstruction() {
+}
+
+G4VPhysicalVolume* DetectorConstruction::Construct() {
+    // Read GDML file
+    parser_.Read("scene.gdml");
+    worldPhys_ = parser_.GetWorldVolume();
+    
+    // ==== USER CODE BEGIN Construct
+    // Custom geometry modifications here
+    // ==== USER CODE END Construct
+    
+    return worldPhys_;
+}
+
+void DetectorConstruction::ConstructSDandField() {
+    // ==== USER CODE BEGIN ConstructSDandField
+    // Custom sensitive detector setup here
+    // ==== USER CODE END ConstructSDandField
+    
+    SetupSensitiveDetectors();
+}
+
+void DetectorConstruction::SetupSensitiveDetectors() {
+    // Auto-generated sensitive detector setup
+    // This section is regenerated on each project generation
+    // ==== USER CODE BEGIN SetupSensitiveDetectors
+    // ==== USER CODE END SetupSensitiveDetectors
+}
+

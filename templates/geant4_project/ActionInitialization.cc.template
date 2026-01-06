@@ -1,0 +1,33 @@
+#include "ActionInitialization.hh"
+#include "RunAction.hh"
+#include "EventAction.hh"
+#include "SteppingAction.hh"
+
+ActionInitialization::ActionInitialization() {
+}
+
+ActionInitialization::~ActionInitialization() {
+}
+
+void ActionInitialization::BuildForMaster() const {
+    SetUserAction(new RunAction());
+    
+    // ==== USER CODE BEGIN BuildForMaster
+    // Custom master thread actions
+    // ==== USER CODE END BuildForMaster
+}
+
+void ActionInitialization::Build() const {
+    SetUserAction(new RunAction());
+    SetUserAction(new EventAction());
+    SetUserAction(new SteppingAction());
+    
+    // ==== USER CODE BEGIN Build
+    // Custom worker thread actions
+    // ==== USER CODE END Build
+}
+
+// ==== USER CODE BEGIN ActionInitialization_implementation
+// Custom action initialization methods
+// ==== USER CODE END ActionInitialization_implementation
+

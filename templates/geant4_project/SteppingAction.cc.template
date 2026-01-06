@@ -1,0 +1,22 @@
+#include "SteppingAction.hh"
+#include <G4Step.hh>
+
+SteppingAction::SteppingAction() {
+    // ==== USER CODE BEGIN SteppingAction_constructor
+    // Custom initialization
+    // ==== USER CODE END SteppingAction_constructor
+}
+
+SteppingAction::~SteppingAction() {
+}
+
+void SteppingAction::UserSteppingAction(const G4Step* step) {
+    // ==== USER CODE BEGIN UserSteppingAction
+    // Custom stepping action code
+    // ==== USER CODE END UserSteppingAction
+}
+
+// ==== USER CODE BEGIN SteppingAction_implementation
+// Custom stepping action methods
+// ==== USER CODE END SteppingAction_implementation
+

@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/stylesheets">
+        <file alias="modern-dark.qss">stylesheets/modern-dark.qss</file>
+    </qresource>
+</RCC>
+

@@ -1,0 +1,18 @@
+# Visualization macro for {{project_name}}
+
+/vis/open OGL
+/vis/viewer/set/viewpointVector 1 1 1
+/vis/viewer/set/lightsVector -1 -1 0
+/vis/viewer/set/style wireframe
+/vis/viewer/set/auxiliaryEdge true
+/vis/viewer/set/lineSegmentsPerCircle 100
+
+/vis/drawVolume
+/vis/viewer/flush
+/vis/scene/add/trajectories smooth
+/vis/scene/add/hits
+
+# ==== USER CODE BEGIN vis_mac
+# Custom visualization commands
+# ==== USER CODE END vis_mac
+

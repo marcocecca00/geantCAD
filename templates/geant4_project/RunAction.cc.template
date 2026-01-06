@@ -1,0 +1,28 @@
+#include "RunAction.hh"
+#include <G4Run.hh>
+
+RunAction::RunAction() {
+    // ==== USER CODE BEGIN RunAction_constructor
+    // Custom initialization
+    // ==== USER CODE END RunAction_constructor
+}
+
+RunAction::~RunAction() {
+}
+
+void RunAction::BeginOfRunAction(const G4Run* run) {
+    // ==== USER CODE BEGIN BeginOfRunAction
+    // Custom begin of run code
+    // ==== USER CODE END BeginOfRunAction
+}
+
+void RunAction::EndOfRunAction(const G4Run* run) {
+    // ==== USER CODE BEGIN EndOfRunAction
+    // Custom end of run code
+    // ==== USER CODE END EndOfRunAction
+}
+
+// ==== USER CODE BEGIN RunAction_implementation
+// Custom run action methods
+// ==== USER CODE END RunAction_implementation
+

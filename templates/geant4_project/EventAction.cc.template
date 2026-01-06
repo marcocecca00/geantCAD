@@ -1,0 +1,28 @@
+#include "EventAction.hh"
+#include <G4Event.hh>
+
+EventAction::EventAction() {
+    // ==== USER CODE BEGIN EventAction_constructor
+    // Custom initialization
+    // ==== USER CODE END EventAction_constructor
+}
+
+EventAction::~EventAction() {
+}
+
+void EventAction::BeginOfEventAction(const G4Event* event) {
+    // ==== USER CODE BEGIN BeginOfEventAction
+    // Custom begin of event code
+    // ==== USER CODE END BeginOfEventAction
+}
+
+void EventAction::EndOfEventAction(const G4Event* event) {
+    // ==== USER CODE BEGIN EndOfEventAction
+    // Custom end of event code
+    // ==== USER CODE END EndOfEventAction
+}
+
+// ==== USER CODE BEGIN EventAction_implementation
+// Custom event action methods
+// ==== USER CODE END EventAction_implementation
+

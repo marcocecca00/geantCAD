@@ -1,0 +1,25 @@
+#include "PhysicsList.hh"
+#include <G4EmStandardPhysics.hh>
+#include <G4DecayPhysics.hh>
+#include <G4OpticalPhysics.hh>
+#include <G4HadronElasticPhysics.hh>
+#include <G4HadronPhysicsFTFP_BERT.hh>
+#include <G4IonPhysics.hh>
+#include <G4StoppingPhysics.hh>
+
+PhysicsList::PhysicsList() {
+    // Register physics constructors
+    {{physics_constructors}}
+    
+    // ==== USER CODE BEGIN PhysicsList_constructor
+    // Custom physics setup here
+    // ==== USER CODE END PhysicsList_constructor
+}
+
+PhysicsList::~PhysicsList() {
+}
+
+// ==== USER CODE BEGIN PhysicsList_implementation
+// Custom physics list methods
+// ==== USER CODE END PhysicsList_implementation
+

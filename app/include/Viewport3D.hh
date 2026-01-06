@@ -1,0 +1,118 @@
+#pragma once
+
+#include <QWidget>
+
+#ifndef GEANTCAD_NO_VTK
+#include <QVTKOpenGLNativeWidget.h>
+#include <vtkSmartPointer.h>
+#include <vtkRenderer.h>
+#include <vtkGenericOpenGLRenderWindow.h>
+#include <vtkRenderWindowInteractor.h>
+#include <vtkInteractorStyleTrackballCamera.h>
+#include <vtkBoxWidget.h>
+#include <vtkTransform.h>
+#endif
+
+#include "../../core/include/SceneGraph.hh"
+#include "../../core/include/Shape.hh"
+#include "../../core/include/CommandStack.hh"
+#include <map>
+
+// Forward declarations
+class vtkActor;
+class vtkPolyDataMapper;
+class vtkPolyDataAlgorithm;
+
+namespace geantcad {
+
+/**
+ * Viewport3D: widget 3D usando VTK per rendering e interazione.
+ * MVP: rendering base + camera controls (orbit/pan/zoom)
+ */
+#ifdef GEANTCAD_NO_VTK
+class Viewport3D : public QWidget {
+#else
+class Viewport3D : public QVTKOpenGLNativeWidget {
+#endif
+    Q_OBJECT
+
+public:
+    explicit Viewport3D(QWidget* parent = nullptr);
+    ~Viewport3D();
+
+    void setSceneGraph(SceneGraph* sceneGraph);
+    void setCommandStack(CommandStack* commandStack);
+    
+    // Interaction mode
+    enum class InteractionMode {
+        Select,
+        Move,
+        Rotate,
+        Scale
+    };
+    void setInteractionMode(InteractionMode mode);
+    InteractionMode getInteractionMode() const { return interactionMode_; }
+    
+    // Camera controls
+    void resetView();
+    void frameSelection();
+    
+    // Grid controls
+    void setGridVisible(bool visible);
+    bool isGridVisible() const { return gridVisible_; }
+    void setGridSpacing(double spacing); // in mm
+    double getGridSpacing() const { return gridSpacing_; }
+    
+    // Rendering
+    void refresh();
+
+signals:
+    void selectionChanged(VolumeNode* node);
+    void viewChanged();
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+
+private:
+    void setupRenderer();
+    void setupInteractor();
+    void addGrid();
+    void addAxesAtOrigin();
+    void updateScene();
+    void setupManipulator();
+    void updateManipulator();
+    void onManipulatorInteraction();
+#ifndef GEANTCAD_NO_VTK
+    void updateSelectionHighlight(VolumeNode* selectedNode);
+    void showContextMenu(const QPoint& pos);
+#endif
+    
+    SceneGraph* sceneGraph_;
+    CommandStack* commandStack_ = nullptr;
+    InteractionMode interactionMode_ = InteractionMode::Select;
+    
+#ifndef GEANTCAD_NO_VTK
+    vtkSmartPointer<vtkRenderer> renderer_;
+    vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
+    vtkSmartPointer<vtkRenderWindowInteractor> interactor_;
+    
+    // Actor storage (volume -> actor mapping)
+    std::map<VolumeNode*, vtkSmartPointer<vtkActor>> actors_;
+    
+    // Grid
+    vtkSmartPointer<vtkActor> gridActor_;
+    bool gridVisible_ = true;
+    double gridSpacing_ = 50.0; // mm
+    
+    // Manipulator widget
+    vtkSmartPointer<vtkBoxWidget> boxWidget_;
+    VolumeNode* manipulatedNode_ = nullptr;
+    bool isManipulating_ = false;
+#endif
+};
+
+} // namespace geantcad
+

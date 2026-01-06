@@ -1,0 +1,17 @@
+#ifndef PhysicsList_h
+#define PhysicsList_h 1
+
+#include <G4VModularPhysicsList.hh>
+
+class PhysicsList : public G4VModularPhysicsList {
+public:
+    PhysicsList();
+    virtual ~PhysicsList();
+    
+    // ==== USER CODE BEGIN PhysicsList_declarations
+    // Custom physics list declarations
+    // ==== USER CODE END PhysicsList_declarations
+};
+
+#endif
+

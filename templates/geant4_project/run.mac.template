@@ -1,0 +1,13 @@
+# Run macro for {{project_name}}
+
+/run/initialize
+
+# Particle Gun Configuration
+{{particle_gun_commands}}
+
+# ==== USER CODE BEGIN run_mac
+# Custom run configuration
+# ==== USER CODE END run_mac
+
+/run/beamOn 1000
+
