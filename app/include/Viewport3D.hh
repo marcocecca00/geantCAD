@@ -46,11 +46,10 @@ public:
     
     // Interaction mode
     enum class InteractionMode {
-        Select,
+        Select,  // Also works as Pan when clicking on empty space
         Move,
         Rotate,
-        Scale,
-        Pan  // Camera panning mode
+        Scale
     };
     void setInteractionMode(InteractionMode mode);
     InteractionMode getInteractionMode() const { return interactionMode_; }
@@ -129,6 +128,8 @@ signals:
     void pointPicked(const QVector3D& point);  // For measurement tool
     void measurementModeChanged(bool enabled);  // Notify when measurement mode changes
     void interactionModeChanged(InteractionMode mode);  // Sync toolbar with viewport
+    void mouseWorldCoordinates(double x, double y, double z);  // Real-time mouse position
+    void objectInfoRequested(VolumeNode* node);  // Show object info in status bar
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -222,6 +223,9 @@ private:
     QString transformInfoText_;
     void updateTransformTextOverlay(const QString& text);
     void hideTransformTextOverlay();
+    
+    // Grid scale indicator
+    vtkSmartPointer<vtkTextActor> gridScaleActor_;
     
     // Helper functions for manipulation
     QVector3D screenToWorld(int x, int y, double depth = 0.0);

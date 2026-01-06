@@ -839,10 +839,6 @@ void MainWindow::connectSignals() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Scale);
         statusBar_->showMessage("Scale (T) - Drag to scale geometry. X/Y/Z to constrain axis.", 4000);
     });
-    connect(toolbar_, &Toolbar::toolPan, this, [this]() {
-        viewport_->setInteractionMode(Viewport3D::InteractionMode::Pan);
-        statusBar_->showMessage("Pan (H) - Left-click and drag to pan camera. Middle-click to orbit.", 4000);
-    });
     
     // Sync toolbar buttons when viewport mode changes (e.g., via right-click menu or shortcut)
     connect(viewport_, &Viewport3D::interactionModeChanged, this, [this](Viewport3D::InteractionMode mode) {
@@ -859,10 +855,36 @@ void MainWindow::connectSignals() {
             case Viewport3D::InteractionMode::Scale:
                 toolbar_->setScaleMode();
                 break;
-            case Viewport3D::InteractionMode::Pan:
-                toolbar_->setPanMode();
-                break;
         }
+    });
+    
+    // Show mouse world coordinates in status bar
+    connect(viewport_, &Viewport3D::mouseWorldCoordinates, this, [this](double x, double y, double z) {
+        statusBar_->showMessage(QString("X: %1  Y: %2  Z: %3 mm").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2).arg(z, 0, 'f', 2));
+    });
+    
+    // Show object info when clicked
+    connect(viewport_, &Viewport3D::objectInfoRequested, this, [this](VolumeNode* node) {
+        if (!node || node == sceneGraph_->getRoot()) return;
+        
+        QString info = QString::fromStdString(node->getName());
+        if (auto* shape = node->getShape()) {
+            QString dims;
+            if (auto* bp = shape->getParamsAs<BoxParams>()) {
+                dims = QString(" [Box: %1×%2×%3 mm]").arg(bp->x, 0, 'f', 1).arg(bp->y, 0, 'f', 1).arg(bp->z, 0, 'f', 1);
+            } else if (auto* sp = shape->getParamsAs<SphereParams>()) {
+                dims = QString(" [Sphere: R=%1 mm]").arg(sp->rmax, 0, 'f', 1);
+            } else if (auto* tp = shape->getParamsAs<TubeParams>()) {
+                dims = QString(" [Tube: R=%1, H=%2 mm]").arg(tp->rmax, 0, 'f', 1).arg(tp->dz * 2, 0, 'f', 1);
+            } else if (auto* cp = shape->getParamsAs<ConeParams>()) {
+                dims = QString(" [Cone: R1=%1, R2=%2, H=%3 mm]").arg(cp->rmin2, 0, 'f', 1).arg(cp->rmax2, 0, 'f', 1).arg(cp->dz * 2, 0, 'f', 1);
+            }
+            info += dims;
+        }
+        if (auto mat = node->getMaterial()) {
+            info += QString(" - %1").arg(QString::fromStdString(mat->getName()));
+        }
+        statusBar_->showMessage(info, 5000);
     });
     
     // Viewport mode changes -> update toolbar

@@ -166,15 +166,15 @@ void Viewport3D::setupRenderer() {
     createGizmos();
     
     // Set up camera with better initial position - zoom into a smaller region on startup
-    // Position camera closer to origin for a more zoomed-in initial view
+    // Position camera closer for viewing 5cm x 5cm objects comfortably
     vtkCamera* camera = renderer_->GetActiveCamera();
-    camera->SetPosition(150, 150, 150);  // Closer initial position
+    camera->SetPosition(80, 80, 80);  // Very close for small objects
     camera->SetFocalPoint(0, 0, 0);
     camera->SetViewUp(0, 0, 1);
     
     // Configure camera for better interaction
     camera->SetClippingRange(0.1, 20000.0); // Wide clipping range
-    camera->SetViewAngle(45.0); // Wider field of view for better perspective
+    camera->SetViewAngle(50.0); // Wider field of view for better perspective
     
     // Don't call ResetCamera() - keep the manual camera position for zoomed-in view
 }
@@ -210,6 +210,12 @@ void Viewport3D::setGridVisible(bool visible) {
 void Viewport3D::setGridSpacing(double spacing) {
     if (spacing <= 0.0) return;
     gridSpacing_ = spacing;
+    
+    // Update grid scale indicator
+    if (gridScaleActor_) {
+        QString scaleText = QString("Grid: %1 mm").arg(gridSpacing_, 0, 'f', 0);
+        gridScaleActor_->SetInput(scaleText.toStdString().c_str());
+    }
     
     // Recreate grid with new spacing
     createGrid();
@@ -866,10 +872,6 @@ void Viewport3D::keyPressEvent(QKeyEvent* event) {
             setInteractionMode(InteractionMode::Scale);
             emit viewChanged();
             break;
-        case Qt::Key_H:
-            setInteractionMode(InteractionMode::Pan);
-            emit viewChanged();
-            break;
             
         // === Axis constraints (during Move/Rotate/Scale) ===
         case Qt::Key_X:
@@ -1047,23 +1049,20 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                 emit selectionChanged(pickedNode);
                 return;
             }
-            // Click on empty space = DESELECT
+            // Click on empty space = DESELECT and return to Select mode
             else {
                 sceneGraph_->clearSelection();
                 updateSelectionHighlight(nullptr);
                 emit selectionChanged(nullptr);
+                setInteractionMode(InteractionMode::Select);
+                // Start panning
+                isPanning_ = true;
+                lastPanPos_ = event->pos();
                 return;
             }
         }
         
-        // Pan mode - start panning with left click
-        if (interactionMode_ == InteractionMode::Pan) {
-            isPanning_ = true;
-            lastPanPos_ = event->pos();
-            return;
-        }
-        
-        // In Select mode, pick objects or deselect on empty click
+        // In Select mode, pick objects or start panning on empty click
         if (interactionMode_ == InteractionMode::Select && sceneGraph_) {
             vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
             picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
@@ -1081,15 +1080,19 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
             }
             
             if (pickedNode && pickedNode != sceneGraph_->getRoot()) {
-                // Clicked on an object - select it
+                // Clicked on an object - select it and show info
                 sceneGraph_->setSelected(pickedNode);
                 updateSelectionHighlight(pickedNode);
                 emit selectionChanged(pickedNode);
+                emit objectInfoRequested(pickedNode);
             } else {
-                // Clicked on empty space - DESELECT everything
+                // Clicked on empty space - deselect and start panning
                 sceneGraph_->clearSelection();
                 updateSelectionHighlight(nullptr);
                 emit selectionChanged(nullptr);
+                // Start panning on empty space in Select mode
+                isPanning_ = true;
+                lastPanPos_ = event->pos();
             }
         }
     }
@@ -1104,6 +1107,20 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
+    // Emit mouse world coordinates for status bar (project to XY plane at Z=0)
+    if (renderer_) {
+        int x = event->pos().x();
+        int y = event->pos().y();
+        // Pick the grid plane (Z=0) to get world coordinates
+        vtkSmartPointer<vtkCellPicker> worldPicker = vtkSmartPointer<vtkCellPicker>::New();
+        worldPicker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
+        double* worldPos = worldPicker->GetPickPosition();
+        // Only emit if we have a valid pick (near the grid plane)
+        if (std::abs(worldPos[2]) < 1000) {  // Reasonable Z range
+            emit mouseWorldCoordinates(worldPos[0], worldPos[1], worldPos[2]);
+        }
+    }
+    
     // Handle gizmo hover highlighting
     if (!isDragging_ && interactionMode_ != InteractionMode::Select) {
         int hoveredAxis = pickGizmoAxis(event->pos().x(), event->pos().y());
@@ -1992,6 +2009,18 @@ void Viewport3D::createGizmos() {
     transformInfoActor_->GetTextProperty()->SetBackgroundColor(0.15, 0.15, 0.15);
     transformInfoActor_->VisibilityOff();
     renderer_->AddActor2D(transformInfoActor_);
+    
+    // Create grid scale indicator (bottom-left corner)
+    gridScaleActor_ = vtkSmartPointer<vtkTextActor>::New();
+    QString scaleText = QString("Grid: %1 mm").arg(gridSpacing_, 0, 'f', 0);
+    gridScaleActor_->SetInput(scaleText.toStdString().c_str());
+    gridScaleActor_->SetPosition(10, 10);
+    gridScaleActor_->GetTextProperty()->SetFontSize(12);
+    gridScaleActor_->GetTextProperty()->SetColor(0.7, 0.7, 0.7);
+    gridScaleActor_->GetTextProperty()->SetFontFamilyToArial();
+    gridScaleActor_->GetTextProperty()->SetBackgroundOpacity(0.5);
+    gridScaleActor_->GetTextProperty()->SetBackgroundColor(0.1, 0.1, 0.1);
+    renderer_->AddActor2D(gridScaleActor_);
     
     // Initially hide all gizmos
     showGizmo(false);
