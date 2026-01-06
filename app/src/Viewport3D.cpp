@@ -133,7 +133,7 @@ Viewport3D::Viewport3D(QWidget* parent)
     , sceneGraph_(nullptr)
     , commandStack_(nullptr)
     , interactionMode_(InteractionMode::Select)
-    , gridVisible_(false)
+    , gridVisible_(true)  // Grid visible by default
     , gridSpacing_(50.0)
     , snapToGrid_(false)
 {
@@ -1000,10 +1000,10 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                 draggedNode_ = selected;
                 dragStartTransform_ = selected->getTransform();
                 dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
-                return; // Block camera - we're manipulating
+                return;
             }
             
-            // Check if we clicked on the object or anywhere (start free drag)
+            // Check what we clicked on
             vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
             picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
             
@@ -1019,19 +1019,31 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                 }
             }
             
-            // In manipulation mode with selection: ALWAYS allow dragging
-            // - Click on selected object = move that object
-            // - Click on empty space = also move selected object (free transform)
-            // - Click on different object = still move selected (don't change selection in manipulation mode)
-            // Set to free movement (no constraint)
-            if (activeGizmoAxis_ < 0) {
-                setConstraintPlane(ConstraintPlane::None);
+            // Click on selected object = start dragging
+            if (pickedNode == selected) {
+                if (activeGizmoAxis_ < 0) {
+                    setConstraintPlane(ConstraintPlane::None);
+                }
+                isDragging_ = true;
+                draggedNode_ = selected;
+                dragStartTransform_ = selected->getTransform();
+                dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
+                return;
             }
-            isDragging_ = true;
-            draggedNode_ = selected;
-            dragStartTransform_ = selected->getTransform();
-            dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
-            return; // Block camera - we're manipulating
+            // Click on different object = select that object
+            else if (pickedNode && pickedNode != sceneGraph_->getRoot()) {
+                sceneGraph_->setSelected(pickedNode);
+                updateSelectionHighlight(pickedNode);
+                emit selectionChanged(pickedNode);
+                return;
+            }
+            // Click on empty space = DESELECT
+            else {
+                sceneGraph_->clearSelection();
+                updateSelectionHighlight(nullptr);
+                emit selectionChanged(nullptr);
+                return;
+            }
         }
         
         // In Select mode, pick objects or deselect on empty click
