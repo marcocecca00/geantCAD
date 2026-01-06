@@ -306,23 +306,6 @@ void MainWindow::setupMenus() {
         statusBar_->showMessage("View reset", 1000);
     }, QKeySequence("Home"));
     viewMenu->addSeparator();
-    QAction* toggleGridAction = viewMenu->addAction("Toggle &Grid", this, [this]() { 
-        bool visible = viewport_->isGridVisible();
-        viewport_->setGridVisible(!visible);
-        statusBar_->showMessage(visible ? "Grid hidden" : "Grid shown", 1000);
-    }, QKeySequence("Ctrl+G"));
-    toggleGridAction->setCheckable(true);
-    toggleGridAction->setChecked(viewport_->isGridVisible());
-    
-    QAction* toggleSnapAction = viewMenu->addAction("Snap to &Grid", this, [this]() { 
-        bool enabled = viewport_->isSnapToGrid();
-        viewport_->setSnapToGrid(!enabled);
-        statusBar_->showMessage(enabled ? "Snap to grid disabled" : "Snap to grid enabled", 1000);
-    });
-    toggleSnapAction->setCheckable(true);
-    toggleSnapAction->setChecked(viewport_->isSnapToGrid());
-    
-    viewMenu->addSeparator();
     
     // Panels submenu
     QMenu* panelsMenu = viewMenu->addMenu("&Panels");
@@ -354,36 +337,6 @@ void MainWindow::setupMenus() {
         clippingPanelAction->setChecked(clippingDock_ && clippingDock_->isVisible());
         measurePanelAction->setChecked(measureDock_ && measureDock_->isVisible());
     });
-    
-    viewMenu->addSeparator();
-    
-    // Grid spacing submenu
-    QMenu* gridSpacingMenu = viewMenu->addMenu("Grid &Spacing");
-    QActionGroup* spacingGroup = new QActionGroup(this);
-    spacingGroup->setExclusive(true);
-    
-    QList<QPair<double, QString>> spacingOptions = {
-        {10.0, "10 mm"},
-        {25.0, "25 mm"},
-        {50.0, "50 mm"},
-        {100.0, "100 mm"},
-        {250.0, "250 mm"},
-        {500.0, "500 mm"}
-    };
-    
-    for (const auto& option : spacingOptions) {
-        QAction* spacingAction = gridSpacingMenu->addAction(option.second, this, [this, option]() {
-            viewport_->setGridSpacing(option.first);
-            statusBar_->showMessage(QString("Grid spacing set to %1").arg(option.second), 1000);
-        });
-        spacingAction->setCheckable(true);
-        spacingGroup->addAction(spacingAction);
-        
-        // Check current spacing
-        if (std::abs(viewport_->getGridSpacing() - option.first) < 0.1) {
-            spacingAction->setChecked(true);
-        }
-    }
     
     // Generate menu
     QMenu* generateMenu = menuBar->addMenu("&Generate");

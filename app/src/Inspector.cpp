@@ -671,6 +671,26 @@ void Inspector::hideAllShapeWidgets() {
     while (geometryLayout_->rowCount() > 0) {
         geometryLayout_->removeRow(0);
     }
+    
+    // Hide all shape parameter widgets to prevent them showing outside layout
+    boxX_->hide();
+    boxY_->hide();
+    boxZ_->hide();
+    tubeRmin_->hide();
+    tubeRmax_->hide();
+    tubeDz_->hide();
+    sphereRmin_->hide();
+    sphereRmax_->hide();
+    coneRmin1_->hide();
+    coneRmax1_->hide();
+    coneRmin2_->hide();
+    coneRmax2_->hide();
+    coneDz_->hide();
+    trdDx1_->hide();
+    trdDx2_->hide();
+    trdDy1_->hide();
+    trdDy2_->hide();
+    trdDz_->hide();
 }
 
 void Inspector::updateShapeUI() {
@@ -691,6 +711,9 @@ void Inspector::updateShapeUI() {
                 boxX_->setValue(params->x);
                 boxY_->setValue(params->y);
                 boxZ_->setValue(params->z);
+                boxX_->show();
+                boxY_->show();
+                boxZ_->show();
                 geometryLayout_->addRow("Half-length X:", boxX_);
                 geometryLayout_->addRow("Half-length Y:", boxY_);
                 geometryLayout_->addRow("Half-length Z:", boxZ_);
@@ -702,8 +725,10 @@ void Inspector::updateShapeUI() {
                 tubeRmin_->setValue(params->rmin);
                 tubeRmax_->setValue(params->rmax);
                 tubeDz_->setValue(params->dz);
-                // Update max for rmin to ensure rmax > rmin
                 tubeRmin_->setMaximum(tubeRmax_->value() - 0.01);
+                tubeRmin_->show();
+                tubeRmax_->show();
+                tubeDz_->show();
                 geometryLayout_->addRow("Inner Radius (Rmin):", tubeRmin_);
                 geometryLayout_->addRow("Outer Radius (Rmax):", tubeRmax_);
                 geometryLayout_->addRow("Half-height (Dz):", tubeDz_);
@@ -714,8 +739,9 @@ void Inspector::updateShapeUI() {
             if (auto* params = shape->getParamsAs<SphereParams>()) {
                 sphereRmin_->setValue(params->rmin);
                 sphereRmax_->setValue(params->rmax);
-                // Update max for rmin to ensure rmax > rmin
                 sphereRmin_->setMaximum(sphereRmax_->value() - 0.01);
+                sphereRmin_->show();
+                sphereRmax_->show();
                 geometryLayout_->addRow("Inner Radius (Rmin):", sphereRmin_);
                 geometryLayout_->addRow("Outer Radius (Rmax):", sphereRmax_);
             }
@@ -728,9 +754,13 @@ void Inspector::updateShapeUI() {
                 coneRmin2_->setValue(params->rmin2);
                 coneRmax2_->setValue(params->rmax2);
                 coneDz_->setValue(params->dz);
-                // Update max for rmin to ensure rmax > rmin
                 coneRmin1_->setMaximum(coneRmax1_->value() - 0.01);
                 coneRmin2_->setMaximum(coneRmax2_->value() - 0.01);
+                coneRmin1_->show();
+                coneRmax1_->show();
+                coneRmin2_->show();
+                coneRmax2_->show();
+                coneDz_->show();
                 geometryLayout_->addRow("Inner Radius -Z (Rmin1):", coneRmin1_);
                 geometryLayout_->addRow("Outer Radius -Z (Rmax1):", coneRmax1_);
                 geometryLayout_->addRow("Inner Radius +Z (Rmin2):", coneRmin2_);
@@ -746,6 +776,11 @@ void Inspector::updateShapeUI() {
                 trdDy1_->setValue(params->dy1);
                 trdDy2_->setValue(params->dy2);
                 trdDz_->setValue(params->dz);
+                trdDx1_->show();
+                trdDx2_->show();
+                trdDy1_->show();
+                trdDy2_->show();
+                trdDz_->show();
                 geometryLayout_->addRow("Half-length X at -Z (Dx1):", trdDx1_);
                 geometryLayout_->addRow("Half-length X at +Z (Dx2):", trdDx2_);
                 geometryLayout_->addRow("Half-length Y at -Z (Dy1):", trdDy1_);

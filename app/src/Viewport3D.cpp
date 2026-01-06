@@ -38,9 +38,7 @@
 #include <vtkPolyData.h>
 #include <vtkPoints.h>
 #include <vtkCellArray.h>
-#include <vtkBoxWidget.h>
 #include <vtkCommand.h>
-#include <vtkTransform.h>
 #include <QMenu>
 #include <QContextMenuEvent>
 #include "../../core/include/Command.hh"
@@ -68,20 +66,15 @@ Viewport3D::Viewport3D(QWidget* parent)
     , sceneGraph_(nullptr)
     , commandStack_(nullptr)
     , interactionMode_(InteractionMode::Select)
-    , gridVisible_(true)
+    , gridVisible_(false)
     , gridSpacing_(50.0)
     , snapToGrid_(false)
-    , manipulatedNode_(nullptr)
-    , isManipulating_(false)
-    , isPicking_(false)
 {
     setupRenderer();
     setupInteractor();
     
     // Setup view cube (only after interactor is set)
     setupViewCube();
-    
-    setupManipulator();
 }
 
 Viewport3D::~Viewport3D() {
@@ -98,11 +91,6 @@ void Viewport3D::setupRenderer() {
     renderWindow_->SetSize(800, 600);
     
     setRenderWindow(renderWindow_);
-    
-    // Add grid for reference
-    addGrid();
-    
-    // Note: Axes at origin removed - using orientation widget in corner instead
     
     // Set up camera with better initial position
     vtkCamera* camera = renderer_->GetActiveCamera();
@@ -140,86 +128,24 @@ void Viewport3D::setupInteractor() {
     }
 }
 
-void Viewport3D::addGrid() {
-    // Grid disabled - using only coordinate axes for orientation
-    // The ViewCube provides better orientation feedback
-    if (!renderer_) return;
-    
-    // Remove existing grid if present
-    if (gridActor_) {
-        renderer_->RemoveActor(gridActor_);
-        gridActor_ = nullptr;
-    }
-    
-    // Only add simple origin axes (short, visible at origin)
-    if (!gridVisible_) return;
-    
-    const double axisLength = 100.0; // 100mm axes at origin
-    
-    // Create colored axes at origin
-    auto createAxisActor = [this](double x1, double y1, double z1, 
-                                   double x2, double y2, double z2,
-                                   double r, double g, double b) {
-        vtkSmartPointer<vtkLineSource> line = vtkSmartPointer<vtkLineSource>::New();
-        line->SetPoint1(x1, y1, z1);
-        line->SetPoint2(x2, y2, z2);
-        
-        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputConnection(line->GetOutputPort());
-        
-        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
-        actor->SetMapper(mapper);
-        actor->GetProperty()->SetColor(r, g, b);
-        actor->GetProperty()->SetLineWidth(2.0);
-        actor->GetProperty()->SetOpacity(0.8);
-        
-        return actor;
-    };
-    
-    // X axis (red)
-    auto xAxis = createAxisActor(0, 0, 0, axisLength, 0, 0, 1.0, 0.3, 0.3);
-    renderer_->AddActor(xAxis);
-    
-    // Y axis (green)  
-    auto yAxis = createAxisActor(0, 0, 0, 0, axisLength, 0, 0.3, 1.0, 0.3);
-    renderer_->AddActor(yAxis);
-    
-    // Z axis (blue)
-    auto zAxis = createAxisActor(0, 0, 0, 0, 0, axisLength, 0.3, 0.3, 1.0);
-    renderer_->AddActor(zAxis);
-}
-
 void Viewport3D::setGridVisible(bool visible) {
     gridVisible_ = visible;
-    if (!renderer_) return; // Safety check - renderer not initialized yet
-    addGrid(); // Recreate grid with new visibility
-    if (renderWindow_) {
-        renderWindow_->Render();
-    }
+    // Grid is not rendered - kept for future use
 }
 
 void Viewport3D::setGridSpacing(double spacing) {
     if (spacing <= 0.0) return;
-    if (!renderer_) return; // Safety check - renderer not initialized yet
     gridSpacing_ = spacing;
-    addGrid(); // Recreate grid with new spacing
-    if (renderWindow_) {
-        renderWindow_->Render();
-    }
 }
 
 void Viewport3D::setSnapToGrid(bool enabled) {
     snapToGrid_ = enabled;
-    // Snap-to-grid will be applied during transform operations
 }
-
-// Removed addAxesAtOrigin() - using orientation widget in corner instead
 #endif
 
 void Viewport3D::setSceneGraph(SceneGraph* sceneGraph) {
     sceneGraph_ = sceneGraph;
     updateScene();
-    updateManipulator();
 }
 
 void Viewport3D::resetView() {
@@ -470,26 +396,12 @@ void Viewport3D::updateScene() {
 #else
     if (!renderer_ || !sceneGraph_) return;
     
-    // Disable manipulator before clearing actors to prevent crashes
-    if (boxWidget_) {
-        boxWidget_->Off();
-        manipulatedNode_ = nullptr;
-    }
-    
     // Clear existing actors safely
-    // First, remove all actors from renderer
     for (auto& pair : actors_) {
         if (pair.second) {
             renderer_->RemoveActor(pair.second);
         }
     }
-    
-    // Force render to ensure actors are removed before clearing map
-    if (renderWindow_) {
-        renderWindow_->Render();
-    }
-    
-    // Now clear the map - actors will be destroyed when smart pointers go out of scope
     actors_.clear();
     
     // Traverse scene graph and create actors
@@ -552,8 +464,6 @@ void Viewport3D::updateScene() {
     
     renderer_->ResetCamera();
     renderWindow_->Render();
-    
-    updateManipulator();
 #endif
 }
 
@@ -563,7 +473,7 @@ void Viewport3D::setCommandStack(CommandStack* commandStack) {
 
 void Viewport3D::setInteractionMode(InteractionMode mode) {
     interactionMode_ = mode;
-    updateManipulator();
+    // Mode change doesn't require special handling now - selection is always enabled
 }
 
 void Viewport3D::keyPressEvent(QKeyEvent* event) {
@@ -705,7 +615,6 @@ void Viewport3D::keyReleaseEvent(QKeyEvent* event) {
 void Viewport3D::mousePressEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
     if (event->button() == Qt::RightButton) {
-        // Show context menu
         showContextMenu(event->pos());
         return;
     }
@@ -713,11 +622,8 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
     // Store mouse position for drag detection
     if (event->button() == Qt::LeftButton) {
         lastPickPos_ = event->pos();
-        isPicking_ = false; // Will be set to true only if we actually pick
     }
     
-    // Always let VTK handle mouse events first for camera rotation
-    // We'll do picking in mouseReleaseEvent if it was a click (not drag)
     QVTKOpenGLNativeWidget::mousePressEvent(event);
 #else
     QWidget::mousePressEvent(event);
@@ -726,15 +632,14 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
-    // Handle picking ONLY if it was a click (not a drag)
-    if (event->button() == Qt::LeftButton && interactionMode_ == InteractionMode::Select) {
+    // Handle picking on left click (if not a drag)
+    if (event->button() == Qt::LeftButton) {
         QPoint currentPos = event->pos();
         QPoint delta = currentPos - lastPickPos_;
-        int moveThreshold = 3; // pixels - very small threshold
+        int moveThreshold = 5; // pixels
         
-        // Only do picking if mouse didn't move much (it was a click, not drag)
-        if (delta.manhattanLength() < moveThreshold && interactor_ && renderer_) {
-            // It was a click - do picking now
+        // Only pick if mouse didn't move much (it was a click)
+        if (delta.manhattanLength() < moveThreshold && renderer_ && renderWindow_) {
             int x = event->pos().x();
             int y = event->pos().y();
             
@@ -742,54 +647,26 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
             picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
             
             vtkActor* pickedActor = picker->GetActor();
+            VolumeNode* pickedNode = nullptr;
+            
             if (pickedActor) {
-                // Find VolumeNode from actor - verify it's still valid
-                VolumeNode* pickedNode = nullptr;
+                // Find VolumeNode from actor
                 for (const auto& pair : actors_) {
                     if (pair.second && pair.second.GetPointer() == pickedActor) {
                         pickedNode = pair.first;
                         break;
                     }
                 }
-                
-                if (pickedNode && actors_.find(pickedNode) != actors_.end()) {
-                    // Verify actor is still valid
-                    if (actors_[pickedNode] && actors_[pickedNode].GetPointer() == pickedActor) {
-                        updateSelectionHighlight(pickedNode);
-                        emit selectionChanged(pickedNode);
-                    }
-                }
-            } else {
-                // Click on empty space - clear selection
-                updateSelectionHighlight(nullptr);
-                emit selectionChanged(nullptr);
             }
             
-            // Ensure manipulator is OFF in Select mode
-            if (boxWidget_) {
-                boxWidget_->Off();
-                manipulatedNode_ = nullptr;
-            }
+            // Update selection
+            updateSelectionHighlight(pickedNode);
+            emit selectionChanged(pickedNode);
             
-            // Render selection highlight
             if (renderWindow_) {
                 renderWindow_->Render();
             }
         }
-        // If it was a drag, VTK already handled camera rotation - do nothing
-    }
-    
-    // Handle manipulator completion
-    if (isManipulating_ && manipulatedNode_ && commandStack_) {
-        // Verify node still exists
-        if (actors_.find(manipulatedNode_) != actors_.end()) {
-            Transform newTransform = manipulatedNode_->getTransform();
-            auto cmd = std::make_unique<TransformVolumeCommand>(manipulatedNode_, newTransform);
-            commandStack_->execute(std::move(cmd));
-        }
-        
-        isManipulating_ = false;
-        emit viewChanged();
     }
     
     QVTKOpenGLNativeWidget::mouseReleaseEvent(event);
@@ -842,12 +719,6 @@ void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
         }
     }
     
-    // CRITICAL: Don't render immediately during picking to avoid glitch
-    // Render will be triggered naturally by VTK event processing or after mouse release
-    // Only render if not currently picking
-    if (renderWindow_ && !isPicking_) {
-        renderWindow_->Render();
-    }
 }
 
 void Viewport3D::showContextMenu(const QPoint& pos) {
@@ -906,182 +777,7 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
 #endif
 }
 
-void Viewport3D::setupManipulator() {
-#ifndef GEANTCAD_NO_VTK
-    if (!interactor_ || !renderer_) return;
-    
-    boxWidget_ = vtkSmartPointer<vtkBoxWidget>::New();
-    boxWidget_->SetInteractor(interactor_);
-    boxWidget_->SetPlaceFactor(1.25);
-    boxWidget_->SetRotationEnabled(interactionMode_ == InteractionMode::Rotate);
-    boxWidget_->SetTranslationEnabled(interactionMode_ == InteractionMode::Move);
-    boxWidget_->SetScalingEnabled(interactionMode_ == InteractionMode::Scale);
-    boxWidget_->Off();
-    
-    // Connect callback for transform updates using command pattern
-    class ManipulatorCallback : public vtkCommand {
-    public:
-        static ManipulatorCallback* New() { return new ManipulatorCallback; }
-        Viewport3D* viewport = nullptr;
-        void Execute(vtkObject* caller, unsigned long eventId, void* callData) override {
-            if (viewport && eventId == vtkCommand::InteractionEvent) {
-                viewport->onManipulatorInteraction();
-            }
-        }
-    };
-    
-    vtkSmartPointer<ManipulatorCallback> callback = vtkSmartPointer<ManipulatorCallback>::New();
-    callback->viewport = this;
-    boxWidget_->AddObserver(vtkCommand::InteractionEvent, callback);
-#endif
-}
-
-void Viewport3D::updateManipulator() {
-#ifndef GEANTCAD_NO_VTK
-    if (!boxWidget_ || !sceneGraph_) return;
-    
-    VolumeNode* selected = sceneGraph_->getSelected();
-    
-    // Disable manipulator if no selection or in Select mode
-    if (!selected || selected == sceneGraph_->getRoot() || interactionMode_ == InteractionMode::Select) {
-        boxWidget_->Off();
-        manipulatedNode_ = nullptr;
-        return;
-    }
-    
-    // Find actor for selected node
-    auto it = actors_.find(selected);
-    if (it == actors_.end() || !it->second) {
-        boxWidget_->Off();
-        manipulatedNode_ = nullptr;
-        return;
-    }
-    
-    vtkActor* actor = it->second.GetPointer();
-    if (!actor) {
-        boxWidget_->Off();
-        manipulatedNode_ = nullptr;
-        return;
-    }
-    
-    // CRITICAL: Safely get bounds with error checking
-    try {
-        double bounds[6];
-        actor->GetBounds(bounds);
-        
-        // Validate bounds
-        bool validBounds = true;
-        for (int i = 0; i < 6; ++i) {
-            if (!std::isfinite(bounds[i])) {
-                validBounds = false;
-                break;
-            }
-        }
-        
-        if (!validBounds) {
-            boxWidget_->Off();
-            manipulatedNode_ = nullptr;
-            return;
-        }
-        
-        // Configure manipulator based on mode
-        boxWidget_->SetRotationEnabled(interactionMode_ == InteractionMode::Rotate);
-        boxWidget_->SetTranslationEnabled(interactionMode_ == InteractionMode::Move);
-        boxWidget_->SetScalingEnabled(interactionMode_ == InteractionMode::Scale);
-        
-        // Place box widget around selected actor
-        boxWidget_->SetPlaceFactor(1.25);
-        boxWidget_->PlaceWidget(bounds);
-        boxWidget_->On();
-        
-        manipulatedNode_ = selected;
-    } catch (...) {
-        // If anything fails, disable manipulator safely
-        boxWidget_->Off();
-        manipulatedNode_ = nullptr;
-    }
-    
-    if (renderWindow_) {
-        renderWindow_->Render();
-    }
-#endif
-}
-
-void Viewport3D::onManipulatorInteraction() {
-#ifndef GEANTCAD_NO_VTK
-    if (!boxWidget_ || !manipulatedNode_ || !sceneGraph_) return;
-    
-    isManipulating_ = true;
-    
-    // Get transform from box widget
-    vtkSmartPointer<vtkTransform> vtkXForm = vtkSmartPointer<vtkTransform>::New();
-    boxWidget_->GetTransform(vtkXForm);
-    
-    // Convert VTK transform to our Transform
-    vtkMatrix4x4* vtkMatrix = vtkXForm->GetMatrix();
-    
-    // Extract translation
-    QVector3D translation(
-        vtkMatrix->GetElement(0, 3),
-        vtkMatrix->GetElement(1, 3),
-        vtkMatrix->GetElement(2, 3)
-    );
-    
-    // Extract rotation (from rotation part of matrix)
-    QMatrix4x4 qtMatrix;
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            qtMatrix(i, j) = vtkMatrix->GetElement(i, j);
-        }
-    }
-    QQuaternion rotation = QQuaternion::fromRotationMatrix(qtMatrix.toGenericMatrix<3, 3>());
-    
-    // Extract scale (from diagonal of rotation matrix)
-    QVector3D scale(
-        QVector3D(qtMatrix(0, 0), qtMatrix(0, 1), qtMatrix(0, 2)).length(),
-        QVector3D(qtMatrix(1, 0), qtMatrix(1, 1), qtMatrix(1, 2)).length(),
-        QVector3D(qtMatrix(2, 0), qtMatrix(2, 1), qtMatrix(2, 2)).length()
-    );
-    
-    // Update transform based on mode
-    Transform& nodeTransform = manipulatedNode_->getTransform();
-    
-    if (interactionMode_ == InteractionMode::Move) {
-        nodeTransform.setTranslation(translation);
-    } else if (interactionMode_ == InteractionMode::Rotate) {
-        nodeTransform.setRotation(rotation);
-    } else if (interactionMode_ == InteractionMode::Scale) {
-        nodeTransform.setScale(scale);
-    }
-    
-    // Update actor transform - verify node still exists in map
-    auto it = actors_.find(manipulatedNode_);
-    if (it != actors_.end() && it->second) {
-        vtkActor* actor = it->second.GetPointer();
-        if (!actor) return; // Safety check
-        auto worldTransform = manipulatedNode_->getWorldTransform();
-        auto matrix = worldTransform.getMatrix();
-        
-        vtkSmartPointer<vtkTransform> vtkActorTransform = vtkSmartPointer<vtkTransform>::New();
-        vtkSmartPointer<vtkMatrix4x4> vtkMatrix2 = vtkSmartPointer<vtkMatrix4x4>::New();
-        const float* data = matrix.constData();
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                vtkMatrix2->SetElement(i, j, data[i * 4 + j]);
-            }
-        }
-        vtkActorTransform->SetMatrix(vtkMatrix2);
-        actor->SetUserTransform(vtkActorTransform);
-    }
-    
-    if (renderWindow_) {
-        renderWindow_->Render();
-    }
-    
-    emit viewChanged();
-#endif
-}
-#endif
+#endif // GEANTCAD_NO_VTK
 
 vtkRenderer* Viewport3D::getRenderer() const {
 #ifndef GEANTCAD_NO_VTK

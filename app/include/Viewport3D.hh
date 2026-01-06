@@ -10,8 +10,6 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkInteractorStyleTrackballCamera.h>
-#include <vtkBoxWidget.h>
-#include <vtkTransform.h>
 #include <vtkOrientationMarkerWidget.h>
 #endif
 
@@ -99,12 +97,7 @@ protected:
 private:
     void setupRenderer();
     void setupInteractor();
-    void addGrid();
-    void addAxesAtOrigin();
     void updateScene();
-    void setupManipulator();
-    void updateManipulator();
-    void onManipulatorInteraction();
     void setupViewCube();
 #ifndef GEANTCAD_NO_VTK
     void updateSelectionHighlight(VolumeNode* selectedNode);
@@ -123,22 +116,12 @@ private:
     // Actor storage (volume -> actor mapping)
     std::map<VolumeNode*, vtkSmartPointer<vtkActor>> actors_;
     
-    // Grid
-    vtkSmartPointer<vtkActor> gridActor_;
-    bool gridVisible_ = true;
+    // Grid (not rendered, just for snap)
+    bool gridVisible_ = false;
     double gridSpacing_ = 50.0; // mm
     bool snapToGrid_ = false;
     
-    // Helper function for snap to grid
-    double snapValue(double value) const;
-    
-    // Manipulator widget
-    vtkSmartPointer<vtkBoxWidget> boxWidget_;
-    VolumeNode* manipulatedNode_ = nullptr;
-    bool isManipulating_ = false;
-    
     // Picking state
-    bool isPicking_ = false;
     QPoint lastPickPos_;
     
     // View cube widget
