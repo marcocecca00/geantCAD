@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QGroupBox>
 #include <QCheckBox>
+#include <QPushButton>
 #include "CollapsibleGroupBox.hh"
 #include "../../core/include/VolumeNode.hh"
 #include "../../core/include/CommandStack.hh"
@@ -34,6 +35,7 @@ private slots:
     void onTransformChanged();
     void onNameChanged();
     void onMaterialChanged();
+    void onMaterialColorClicked();
     void onSDChanged();
     void onOpticalChanged();
     void onOpticalPresetChanged();
@@ -58,7 +60,7 @@ private:
     
     // Material
     QComboBox* materialCombo_;
-    QLabel* materialColorPreview_;
+    QPushButton* materialColorBtn_;
     
     // Geometry (Shape Parameters)
     CollapsibleGroupBox* geometryGroup_;

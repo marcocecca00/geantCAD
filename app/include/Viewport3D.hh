@@ -179,6 +179,10 @@ private:
     vtkSmartPointer<vtkActor> gizmoScaleZ_;
     int activeGizmoAxis_ = -1; // -1 = none, 0 = X, 1 = Y, 2 = Z, 3 = XY, 4 = XZ, 5 = YZ
     
+    // Smart guides (alignment lines)
+    std::vector<vtkSmartPointer<vtkActor>> guideActors_;
+    double snapThreshold_ = 10.0; // Distance threshold for snap suggestion (mm)
+    
     // Helper functions for manipulation
     QVector3D screenToWorld(int x, int y, double depth = 0.0);
     double getDepthAtPosition(int x, int y);
@@ -187,6 +191,18 @@ private:
     void updateGizmoPosition();
     void showGizmo(bool show);
     int pickGizmoAxis(int x, int y);
+    
+    // Smart guides system
+    struct AlignmentGuide {
+        QVector3D start;
+        QVector3D end;
+        double distance; // Distance to alignment point
+        enum Type { CenterX, CenterY, CenterZ, EdgeAlign, DistanceEqual } type;
+    };
+    std::vector<AlignmentGuide> findAlignments(VolumeNode* movingNode, const QVector3D& newPos);
+    void updateSmartGuides(VolumeNode* movingNode, const QVector3D& newPos);
+    void clearSmartGuides();
+    QVector3D applySmartSnap(const QVector3D& pos, VolumeNode* movingNode);
 #endif
 };
 

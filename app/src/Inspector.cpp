@@ -13,6 +13,7 @@
 #include <QSpinBox>
 #include <QFormLayout>
 #include <QColor>
+#include <QColorDialog>
 #include <QStandardItemModel>
 #include <QLineEdit>
 #include <cmath>
@@ -121,13 +122,15 @@ void Inspector::setupUI() {
     connect(materialCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Inspector::onMaterialChanged);
     materialRowLayout->addWidget(materialCombo_);
     
-    // Color preview
-    materialColorPreview_ = new QLabel(this);
-    materialColorPreview_->setMinimumSize(30, 30);
-    materialColorPreview_->setMaximumSize(30, 30);
-    materialColorPreview_->setStyleSheet("border: 1px solid #404040; border-radius: 3px;");
-    materialColorPreview_->setToolTip("Material color preview");
-    materialRowLayout->addWidget(materialColorPreview_);
+    // Color button (clickable to change color)
+    materialColorBtn_ = new QPushButton(this);
+    materialColorBtn_->setMinimumSize(30, 30);
+    materialColorBtn_->setMaximumSize(30, 30);
+    materialColorBtn_->setStyleSheet("border: 1px solid #404040; border-radius: 3px; background-color: #808080;");
+    materialColorBtn_->setToolTip("Click to change display color");
+    materialColorBtn_->setCursor(Qt::PointingHandCursor);
+    connect(materialColorBtn_, &QPushButton::clicked, this, &Inspector::onMaterialColorClicked);
+    materialRowLayout->addWidget(materialColorBtn_);
     
     materialLayout->addLayout(materialRowLayout);
     
@@ -487,7 +490,7 @@ void Inspector::updateUI() {
             // Update color preview
             updateMaterialColorPreview(material);
         } else {
-            materialColorPreview_->setStyleSheet("border: 1px solid #404040; border-radius: 3px; background-color: #2b2b2b;");
+            materialColorBtn_->setStyleSheet("border: 1px solid #404040; border-radius: 3px; background-color: #2b2b2b;");
         }
         
         // Sensitive Detector
@@ -599,7 +602,7 @@ void Inspector::onMaterialChanged() {
 }
 
 void Inspector::updateMaterialColorPreview(std::shared_ptr<Material> material) {
-    if (!material || !materialColorPreview_) return;
+    if (!material || !materialColorBtn_) return;
     
     const auto& visual = material->getVisual();
     QColor color;
@@ -607,15 +610,44 @@ void Inspector::updateMaterialColorPreview(std::shared_ptr<Material> material) {
     
     QString styleSheet = QString("border: 1px solid #404040; border-radius: 3px; background-color: %1;")
                         .arg(color.name());
-    materialColorPreview_->setStyleSheet(styleSheet);
+    materialColorBtn_->setStyleSheet(styleSheet);
     
     // Update tooltip with color info
-    QString tooltip = QString("Material: %1\nColor: RGB(%2, %3, %4)")
+    QString tooltip = QString("Material: %1\nColor: RGB(%2, %3, %4)\nClick to change color")
                      .arg(QString::fromStdString(material->getName()))
                      .arg(static_cast<int>(visual.r * 255))
                      .arg(static_cast<int>(visual.g * 255))
                      .arg(static_cast<int>(visual.b * 255));
-    materialColorPreview_->setToolTip(tooltip);
+    materialColorBtn_->setToolTip(tooltip);
+}
+
+void Inspector::onMaterialColorClicked() {
+    if (!currentNode_ || !currentNode_->getMaterial()) return;
+    
+    auto material = currentNode_->getMaterial();
+    const auto& visual = material->getVisual();
+    
+    // Get current color
+    QColor currentColor;
+    currentColor.setRgbF(visual.r, visual.g, visual.b, visual.a);
+    
+    // Open color dialog
+    QColor newColor = QColorDialog::getColor(currentColor, this, "Choose Material Color",
+                                              QColorDialog::ShowAlphaChannel);
+    
+    if (newColor.isValid()) {
+        // Update material visual properties
+        material->getVisual().r = newColor.redF();
+        material->getVisual().g = newColor.greenF();
+        material->getVisual().b = newColor.blueF();
+        material->getVisual().a = newColor.alphaF();
+        
+        // Update UI
+        updateMaterialColorPreview(material);
+        
+        // Refresh viewport
+        emit nodeChanged(currentNode_);
+    }
 }
 
 void Inspector::onSDChanged() {

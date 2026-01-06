@@ -989,76 +989,26 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             QVector3D planePoint = dragStartTransform_.getTranslation();
             
             // Calculate ray from screen position
-            double depth = 0.5; // Use middle depth for ray casting
             QVector3D rayStart = screenToWorld(x, y, 0.0);
             QVector3D rayEnd = screenToWorld(x, y, 1.0);
             QVector3D rayDir = (rayEnd - rayStart).normalized();
             
             QVector3D newPos = planePoint;
             
-            // Project movement to constraint plane
-            switch (constraintPlane_) {
-                case ConstraintPlane::XY: {
-                    // Intersect ray with Z = planePoint.z()
-                    if (std::abs(rayDir.z()) > 0.0001) {
-                        double t = (planePoint.z() - rayStart.z()) / rayDir.z();
-                        newPos = rayStart + t * rayDir;
-                        newPos.setZ(planePoint.z()); // Keep Z fixed
-                    }
-                    break;
-                }
-                case ConstraintPlane::XZ: {
-                    // Intersect ray with Y = planePoint.y()
-                    if (std::abs(rayDir.y()) > 0.0001) {
-                        double t = (planePoint.y() - rayStart.y()) / rayDir.y();
-                        newPos = rayStart + t * rayDir;
-                        newPos.setY(planePoint.y()); // Keep Y fixed
-                    }
-                    break;
-                }
-                case ConstraintPlane::YZ: {
-                    // Intersect ray with X = planePoint.x()
-                    if (std::abs(rayDir.x()) > 0.0001) {
-                        double t = (planePoint.x() - rayStart.x()) / rayDir.x();
-                        newPos = rayStart + t * rayDir;
-                        newPos.setX(planePoint.x()); // Keep X fixed
-                    }
-                    break;
-                }
-                case ConstraintPlane::AxisX: {
-                    // Move only along X axis (project to X line)
-                    QVector3D startPos = dragStartTransform_.getTranslation();
-                    // Simple projection: use screen X movement
-                    double screenDelta = (x - lastPickPos_.x()) * 0.5; // Scale factor
-                    newPos = startPos;
-                    newPos.setX(startPos.x() + screenDelta);
-                    break;
-                }
-                case ConstraintPlane::AxisY: {
-                    QVector3D startPos = dragStartTransform_.getTranslation();
-                    double screenDelta = (x - lastPickPos_.x()) * 0.5;
-                    newPos = startPos;
-                    newPos.setY(startPos.y() + screenDelta);
-                    break;
-                }
-                case ConstraintPlane::AxisZ: {
-                    QVector3D startPos = dragStartTransform_.getTranslation();
-                    double screenDelta = -(y - lastPickPos_.y()) * 0.5; // Invert Y
-                    newPos = startPos;
-                    newPos.setZ(startPos.z() + screenDelta);
-                    break;
-                }
-                default: {
-                    // Free movement - use original logic
-                    double depth = getDepthAtPosition(lastPickPos_.x(), lastPickPos_.y());
-                    QVector3D currentWorldPos = screenToWorld(x, y, depth);
-                    QVector3D delta = currentWorldPos - dragStartWorldPos_;
-                    newPos = dragStartTransform_.getTranslation() + delta;
-                    break;
-                }
+            // Always use XY plane for movement (ground plane) - most intuitive
+            if (std::abs(rayDir.z()) > 0.0001) {
+                double t = (planePoint.z() - rayStart.z()) / rayDir.z();
+                newPos = rayStart + t * rayDir;
+                newPos.setZ(planePoint.z()); // Keep Z fixed
             }
             
-            // Snap to grid if enabled
+            // Apply smart snap (alignment with other objects)
+            newPos = applySmartSnap(newPos, draggedNode_);
+            
+            // Update smart guides visualization
+            updateSmartGuides(draggedNode_, newPos);
+            
+            // Snap to grid if enabled (after smart snap)
             if (snapToGrid_ && gridSpacing_ > 0) {
                 newPos.setX(std::round(newPos.x() / gridSpacing_) * gridSpacing_);
                 newPos.setY(std::round(newPos.y() / gridSpacing_) * gridSpacing_);
@@ -1109,10 +1059,9 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
             return;
         }
         else if (interactionMode_ == InteractionMode::Scale) {
-            // Calculate scale from mouse movement
-            double deltaX = (x - lastPickPos_.x()) * 0.005; // Small increments
-            double deltaY = (y - lastPickPos_.y()) * 0.005;
-            double scaleDelta = deltaX - deltaY; // Combined movement
+            // Calculate scale from mouse movement (right = bigger, left = smaller)
+            double scaleFactor = 1.0 + (x - lastPickPos_.x()) * 0.01;
+            scaleFactor = std::max(0.9, std::min(1.1, scaleFactor)); // Clamp for stability
             
             // For shapes, we modify the shape parameters based on type
             // This is more Geant4-like (shape dimensions matter, not transform scale)
@@ -1125,39 +1074,39 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                     case ShapeType::Box: {
                         if (auto* p = shape->getParamsAs<BoxParams>()) {
                             if (constraintPlane_ == ConstraintPlane::AxisX || constraintPlane_ == ConstraintPlane::None)
-                                p->x = std::max(0.1, p->x * (1.0 + scaleDelta));
+                                p->x = std::max(1.0, p->x * scaleFactor);
                             if (constraintPlane_ == ConstraintPlane::AxisY || constraintPlane_ == ConstraintPlane::None)
-                                p->y = std::max(0.1, p->y * (1.0 + scaleDelta));
+                                p->y = std::max(1.0, p->y * scaleFactor);
                             if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
-                                p->z = std::max(0.1, p->z * (1.0 + scaleDelta));
+                                p->z = std::max(1.0, p->z * scaleFactor);
                         }
                         break;
                     }
                     case ShapeType::Tube: {
                         if (auto* p = shape->getParamsAs<TubeParams>()) {
                             if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
-                                p->dz = std::max(0.1, p->dz * (1.0 + scaleDelta));
+                                p->dz = std::max(1.0, p->dz * scaleFactor);
                             if (constraintPlane_ != ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None) {
-                                p->rmax = std::max(0.1, p->rmax * (1.0 + scaleDelta));
-                                p->rmin = std::max(0.0, p->rmin * (1.0 + scaleDelta));
+                                p->rmax = std::max(1.0, p->rmax * scaleFactor);
+                                p->rmin = std::max(0.0, p->rmin * scaleFactor);
                             }
                         }
                         break;
                     }
                     case ShapeType::Sphere: {
                         if (auto* p = shape->getParamsAs<SphereParams>()) {
-                            p->rmax = std::max(0.1, p->rmax * (1.0 + scaleDelta));
-                            p->rmin = std::max(0.0, p->rmin * (1.0 + scaleDelta));
+                            p->rmax = std::max(1.0, p->rmax * scaleFactor);
+                            p->rmin = std::max(0.0, p->rmin * scaleFactor);
                         }
                         break;
                     }
                     case ShapeType::Cone: {
                         if (auto* p = shape->getParamsAs<ConeParams>()) {
                             if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
-                                p->dz = std::max(0.1, p->dz * (1.0 + scaleDelta));
+                                p->dz = std::max(1.0, p->dz * scaleFactor);
                             if (constraintPlane_ != ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None) {
-                                p->rmax1 = std::max(0.1, p->rmax1 * (1.0 + scaleDelta));
-                                p->rmax2 = std::max(0.0, p->rmax2 * (1.0 + scaleDelta));
+                                p->rmax1 = std::max(1.0, p->rmax1 * scaleFactor);
+                                p->rmax2 = std::max(0.0, p->rmax2 * scaleFactor);
                             }
                         }
                         break;
@@ -1165,15 +1114,15 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                     case ShapeType::Trd: {
                         if (auto* p = shape->getParamsAs<TrdParams>()) {
                             if (constraintPlane_ == ConstraintPlane::AxisX || constraintPlane_ == ConstraintPlane::None) {
-                                p->dx1 = std::max(0.1, p->dx1 * (1.0 + scaleDelta));
-                                p->dx2 = std::max(0.1, p->dx2 * (1.0 + scaleDelta));
+                                p->dx1 = std::max(1.0, p->dx1 * scaleFactor);
+                                p->dx2 = std::max(1.0, p->dx2 * scaleFactor);
                             }
                             if (constraintPlane_ == ConstraintPlane::AxisY || constraintPlane_ == ConstraintPlane::None) {
-                                p->dy1 = std::max(0.1, p->dy1 * (1.0 + scaleDelta));
-                                p->dy2 = std::max(0.1, p->dy2 * (1.0 + scaleDelta));
+                                p->dy1 = std::max(1.0, p->dy1 * scaleFactor);
+                                p->dy2 = std::max(1.0, p->dy2 * scaleFactor);
                             }
                             if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
-                                p->dz = std::max(0.1, p->dz * (1.0 + scaleDelta));
+                                p->dz = std::max(1.0, p->dz * scaleFactor);
                         }
                         break;
                     }
@@ -1201,6 +1150,9 @@ void Viewport3D::mouseReleaseEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
     // Handle end of drag operation
     if (isDragging_ && draggedNode_ && event->button() == Qt::LeftButton) {
+        // Clear smart guides
+        clearSmartGuides();
+        
         // Create undo command for the entire drag operation
         if (commandStack_) {
             Transform finalTransform = draggedNode_->getTransform();
@@ -1705,6 +1657,140 @@ QVector3D Viewport3D::projectToPlane(const QVector3D& worldPos, ConstraintPlane 
         default:
             break;
     }
+    
+    return result;
+}
+
+std::vector<Viewport3D::AlignmentGuide> Viewport3D::findAlignments(VolumeNode* movingNode, const QVector3D& newPos) {
+    std::vector<AlignmentGuide> guides;
+    if (!sceneGraph_ || !movingNode) return guides;
+    
+    // Collect all other nodes' positions
+    std::vector<QVector3D> otherPositions;
+    sceneGraph_->traverse([&](VolumeNode* node) {
+        if (node != movingNode && node != sceneGraph_->getRoot() && node->getShape()) {
+            otherPositions.push_back(node->getTransform().getTranslation());
+        }
+    });
+    
+    // Check alignment with each other object
+    for (const auto& otherPos : otherPositions) {
+        // X alignment (centers aligned on X)
+        if (std::abs(newPos.x() - otherPos.x()) < snapThreshold_) {
+            AlignmentGuide guide;
+            guide.type = AlignmentGuide::CenterX;
+            guide.start = QVector3D(otherPos.x(), std::min(newPos.y(), otherPos.y()) - 50, newPos.z());
+            guide.end = QVector3D(otherPos.x(), std::max(newPos.y(), otherPos.y()) + 50, newPos.z());
+            guide.distance = std::abs(newPos.x() - otherPos.x());
+            guides.push_back(guide);
+        }
+        
+        // Y alignment
+        if (std::abs(newPos.y() - otherPos.y()) < snapThreshold_) {
+            AlignmentGuide guide;
+            guide.type = AlignmentGuide::CenterY;
+            guide.start = QVector3D(std::min(newPos.x(), otherPos.x()) - 50, otherPos.y(), newPos.z());
+            guide.end = QVector3D(std::max(newPos.x(), otherPos.x()) + 50, otherPos.y(), newPos.z());
+            guide.distance = std::abs(newPos.y() - otherPos.y());
+            guides.push_back(guide);
+        }
+        
+        // Z alignment
+        if (std::abs(newPos.z() - otherPos.z()) < snapThreshold_) {
+            AlignmentGuide guide;
+            guide.type = AlignmentGuide::CenterZ;
+            guide.start = QVector3D(newPos.x(), newPos.y(), otherPos.z());
+            guide.end = QVector3D(otherPos.x(), otherPos.y(), otherPos.z());
+            guide.distance = std::abs(newPos.z() - otherPos.z());
+            guides.push_back(guide);
+        }
+    }
+    
+    return guides;
+}
+
+void Viewport3D::updateSmartGuides(VolumeNode* movingNode, const QVector3D& newPos) {
+    // Clear existing guides
+    clearSmartGuides();
+    
+    if (!renderer_) return;
+    
+    // Find alignments
+    auto alignments = findAlignments(movingNode, newPos);
+    
+    // Create guide line actors
+    for (const auto& guide : alignments) {
+        vtkSmartPointer<vtkLineSource> line = vtkSmartPointer<vtkLineSource>::New();
+        line->SetPoint1(guide.start.x(), guide.start.y(), guide.start.z());
+        line->SetPoint2(guide.end.x(), guide.end.y(), guide.end.z());
+        
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(line->GetOutputPort());
+        
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        
+        // Color based on alignment type
+        switch (guide.type) {
+            case AlignmentGuide::CenterX:
+                actor->GetProperty()->SetColor(1.0, 0.4, 0.4); // Red for X
+                break;
+            case AlignmentGuide::CenterY:
+                actor->GetProperty()->SetColor(0.4, 1.0, 0.4); // Green for Y
+                break;
+            case AlignmentGuide::CenterZ:
+                actor->GetProperty()->SetColor(0.4, 0.6, 1.0); // Blue for Z
+                break;
+            default:
+                actor->GetProperty()->SetColor(1.0, 0.8, 0.2); // Yellow default
+        }
+        
+        actor->GetProperty()->SetLineWidth(2.0);
+        actor->GetProperty()->SetOpacity(0.8);
+        actor->SetPickable(false);
+        
+        renderer_->AddActor(actor);
+        guideActors_.push_back(actor);
+    }
+}
+
+void Viewport3D::clearSmartGuides() {
+    if (!renderer_) return;
+    
+    for (auto& actor : guideActors_) {
+        if (actor) {
+            renderer_->RemoveActor(actor);
+        }
+    }
+    guideActors_.clear();
+}
+
+QVector3D Viewport3D::applySmartSnap(const QVector3D& pos, VolumeNode* movingNode) {
+    if (!sceneGraph_ || !movingNode) return pos;
+    
+    QVector3D result = pos;
+    
+    // Collect all other nodes' positions
+    sceneGraph_->traverse([&](VolumeNode* node) {
+        if (node != movingNode && node != sceneGraph_->getRoot() && node->getShape()) {
+            QVector3D otherPos = node->getTransform().getTranslation();
+            
+            // Snap X if close
+            if (std::abs(pos.x() - otherPos.x()) < snapThreshold_) {
+                result.setX(otherPos.x());
+            }
+            
+            // Snap Y if close  
+            if (std::abs(pos.y() - otherPos.y()) < snapThreshold_) {
+                result.setY(otherPos.y());
+            }
+            
+            // Snap Z if close
+            if (std::abs(pos.z() - otherPos.z()) < snapThreshold_) {
+                result.setZ(otherPos.z());
+            }
+        }
+    });
     
     return result;
 }
