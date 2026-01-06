@@ -7,6 +7,7 @@
 #include <QMimeData>
 #include <QApplication>
 #include <QDropEvent>
+#include <QPainter>
 #include "../../core/include/VolumeNode.hh"
 #include "../../core/include/Shape.hh"
 
@@ -88,26 +89,95 @@ namespace {
 }
 
 QIcon Outliner::getShapeIcon(ShapeType type) const {
-    // Return appropriate icon based on shape type
-    // Using emoji-style representations that work well in dark themes
+    // Create custom icons for each shape type
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    QColor color;
+    
     switch (type) {
         case ShapeType::Box:
-            return style()->standardIcon(QStyle::SP_DialogSaveButton); // Box-like icon
+            color = QColor("#3794ff"); // Blue
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            painter.drawRect(2, 4, 12, 8);
+            painter.drawLine(2, 4, 5, 1);
+            painter.drawLine(14, 4, 17, 1);
+            painter.drawLine(5, 1, 17, 1);
+            break;
+            
         case ShapeType::Tube:
-            return style()->standardIcon(QStyle::SP_DriveHDIcon);
+            color = QColor("#4ec9b0"); // Teal
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            painter.drawEllipse(3, 1, 10, 4);
+            painter.drawLine(3, 3, 3, 12);
+            painter.drawLine(13, 3, 13, 12);
+            painter.drawArc(3, 10, 10, 4, 0, -180 * 16);
+            break;
+            
         case ShapeType::Sphere:
-            return style()->standardIcon(QStyle::SP_ComputerIcon);
+            color = QColor("#ce9178"); // Orange
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            painter.drawEllipse(1, 1, 14, 14);
+            break;
+            
         case ShapeType::Cone:
-            return style()->standardIcon(QStyle::SP_ArrowUp);
+            color = QColor("#dcdcaa"); // Yellow
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            {
+                QPolygon poly;
+                poly << QPoint(8, 1) << QPoint(2, 14) << QPoint(14, 14);
+                painter.drawPolygon(poly);
+            }
+            break;
+            
         case ShapeType::Trd:
-            return style()->standardIcon(QStyle::SP_TitleBarNormalButton);
+            color = QColor("#c586c0"); // Purple
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            {
+                QPolygon poly;
+                poly << QPoint(4, 2) << QPoint(12, 2) << QPoint(14, 14) << QPoint(2, 14);
+                painter.drawPolygon(poly);
+            }
+            break;
+            
         case ShapeType::Polycone:
-            return style()->standardIcon(QStyle::SP_DriveNetIcon);
+            color = QColor("#6a9955"); // Green
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            painter.drawEllipse(2, 2, 12, 4);
+            painter.drawLine(2, 4, 4, 12);
+            painter.drawLine(14, 4, 12, 12);
+            painter.drawEllipse(4, 10, 8, 4);
+            break;
+            
         case ShapeType::Polyhedra:
-            return style()->standardIcon(QStyle::SP_DirIcon);
+            color = QColor("#569cd6"); // Light blue
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(color.darker(150));
+            {
+                // Hexagon
+                QPolygon poly;
+                poly << QPoint(8, 1) << QPoint(14, 4) << QPoint(14, 11) 
+                     << QPoint(8, 14) << QPoint(2, 11) << QPoint(2, 4);
+                painter.drawPolygon(poly);
+            }
+            break;
+            
         default:
-            return style()->standardIcon(QStyle::SP_FileIcon);
+            color = QColor("#808080"); // Gray
+            painter.setPen(QPen(color, 1.2));
+            painter.drawRect(3, 3, 10, 10);
+            break;
     }
+    
+    return QIcon(pixmap);
 }
 
 QTreeWidgetItem* Outliner::createTreeItem(VolumeNode* node) {

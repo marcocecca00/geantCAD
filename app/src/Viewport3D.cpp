@@ -171,6 +171,10 @@ void Viewport3D::createGrid() {
         renderer_->RemoveActor(axisYActor_);
         axisYActor_ = nullptr;
     }
+    if (axisZActor_) {
+        renderer_->RemoveActor(axisZActor_);
+        axisZActor_ = nullptr;
+    }
     
     // Grid parameters
     const double gridSize = 500.0; // Total grid size (mm)
@@ -308,6 +312,22 @@ void Viewport3D::createGrid() {
     axisYActor_->SetPickable(false);
     renderer_->AddActor(axisYActor_);
     
+    // Create Z axis line (blue) - vertical
+    vtkSmartPointer<vtkLineSource> zAxisLine = vtkSmartPointer<vtkLineSource>::New();
+    zAxisLine->SetPoint1(0, 0, -gridSize);
+    zAxisLine->SetPoint2(0, 0, gridSize);
+    
+    vtkSmartPointer<vtkPolyDataMapper> zMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    zMapper->SetInputConnection(zAxisLine->GetOutputPort());
+    
+    axisZActor_ = vtkSmartPointer<vtkActor>::New();
+    axisZActor_->SetMapper(zMapper);
+    axisZActor_->GetProperty()->SetColor(0.2, 0.4, 0.9); // Blue
+    axisZActor_->GetProperty()->SetLineWidth(2.0);
+    axisZActor_->GetProperty()->SetOpacity(0.8);
+    axisZActor_->SetPickable(false);
+    renderer_->AddActor(axisZActor_);
+    
     // Apply visibility
     updateGrid();
 }
@@ -321,6 +341,9 @@ void Viewport3D::updateGrid() {
     }
     if (axisYActor_) {
         axisYActor_->SetVisibility(gridVisible_);
+    }
+    if (axisZActor_) {
+        axisZActor_->SetVisibility(gridVisible_);
     }
 }
 #endif

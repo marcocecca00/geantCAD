@@ -122,6 +122,7 @@ private:
     vtkSmartPointer<vtkActor> gridActor_;
     vtkSmartPointer<vtkActor> axisXActor_;
     vtkSmartPointer<vtkActor> axisYActor_;
+    vtkSmartPointer<vtkActor> axisZActor_;
     bool gridVisible_ = true;  // Enabled by default
     double gridSpacing_ = 50.0; // mm
     bool snapToGrid_ = false;

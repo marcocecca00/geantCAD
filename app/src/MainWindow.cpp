@@ -36,7 +36,44 @@
 #include "ShortcutsDialog.hh"
 #include <QDir>
 #include <QGroupBox>
+#include <QPainter>
 using namespace geantcad;
+
+namespace {
+// Helper to create shape icons for menus (same as toolbar)
+QIcon createShapeIcon(const QString& shape, const QColor& fillColor = QColor("#3794ff")) {
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(fillColor, 1.2));
+    painter.setBrush(fillColor.darker(150));
+    
+    if (shape == "box") {
+        painter.drawRect(2, 4, 12, 8);
+        painter.drawLine(2, 4, 5, 1);
+        painter.drawLine(14, 4, 17, 1);
+        painter.drawLine(5, 1, 17, 1);
+    } else if (shape == "sphere") {
+        painter.drawEllipse(1, 1, 14, 14);
+    } else if (shape == "tube") {
+        painter.drawEllipse(3, 1, 10, 4);
+        painter.drawLine(3, 3, 3, 12);
+        painter.drawLine(13, 3, 13, 12);
+        painter.drawArc(3, 10, 10, 4, 0, -180 * 16);
+    } else if (shape == "cone") {
+        QPolygon poly;
+        poly << QPoint(8, 1) << QPoint(2, 14) << QPoint(14, 14);
+        painter.drawPolygon(poly);
+    } else if (shape == "trd") {
+        QPolygon poly;
+        poly << QPoint(4, 2) << QPoint(12, 2) << QPoint(14, 14) << QPoint(2, 14);
+        painter.drawPolygon(poly);
+    }
+    
+    return QIcon(pixmap);
+}
+}
 
 namespace geantcad {
 
@@ -236,7 +273,7 @@ void MainWindow::setupMenus() {
     QMenu* shapeMenu = insertMenu->addMenu("&Shape");
     
     // Box shape
-    QAction* insertBoxAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_FileIcon), "&Box", this, [this]() {
+    QAction* insertBoxAction = shapeMenu->addAction(createShapeIcon("box"), "&Box", this, [this]() {
         auto boxShape = makeBox(50.0, 50.0, 50.0);
         auto material = Material::makeAir();
         auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Box", std::move(boxShape), material);
@@ -247,20 +284,20 @@ void MainWindow::setupMenus() {
     });
     insertBoxAction->setShortcut(QKeySequence("Ctrl+Shift+B"));
     
-    // Tube shape
-    QAction* insertTubeAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_DirIcon), "&Tube", this, [this]() {
+    // Tube/Cylinder shape
+    QAction* insertTubeAction = shapeMenu->addAction(createShapeIcon("tube"), "&Cylinder", this, [this]() {
         auto tubeShape = makeTube(0.0, 30.0, 50.0);
         auto material = Material::makeWater();
-        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Tube", std::move(tubeShape), material);
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Cylinder", std::move(tubeShape), material);
         commandStack_->execute(std::move(cmd));
         outliner_->refresh();
         viewport_->refresh();
-        statusBar_->showMessage("Created Tube", 2000);
+        statusBar_->showMessage("Created Cylinder", 2000);
     });
     insertTubeAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
     
     // Sphere shape
-    QAction* insertSphereAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_ComputerIcon), "&Sphere", this, [this]() {
+    QAction* insertSphereAction = shapeMenu->addAction(createShapeIcon("sphere"), "&Sphere", this, [this]() {
         auto sphereShape = makeSphere(0.0, 40.0);
         auto material = Material::makeAir();
         auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Sphere", std::move(sphereShape), material);
@@ -272,7 +309,7 @@ void MainWindow::setupMenus() {
     insertSphereAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
     
     // Cone shape
-    QAction* insertConeAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_DriveCDIcon), "&Cone", this, [this]() {
+    QAction* insertConeAction = shapeMenu->addAction(createShapeIcon("cone"), "&Cone", this, [this]() {
         auto coneShape = makeCone(0.0, 20.0, 0.0, 40.0, 50.0);
         auto material = Material::makeLead();
         auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Cone", std::move(coneShape), material);
@@ -283,15 +320,15 @@ void MainWindow::setupMenus() {
     });
     insertConeAction->setShortcut(QKeySequence("Ctrl+Shift+C"));
     
-    // Trd shape
-    QAction* insertTrdAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), "&Trd", this, [this]() {
+    // Trapezoid (Trd) shape
+    QAction* insertTrdAction = shapeMenu->addAction(createShapeIcon("trd"), "&Trapezoid", this, [this]() {
         auto trdShape = makeTrd(30.0, 20.0, 30.0, 20.0, 50.0);
         auto material = Material::makeSilicon();
-        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Trd", std::move(trdShape), material);
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Trapezoid", std::move(trdShape), material);
         commandStack_->execute(std::move(cmd));
         outliner_->refresh();
         viewport_->refresh();
-        statusBar_->showMessage("Created Trd", 2000);
+        statusBar_->showMessage("Created Trapezoid", 2000);
     });
     insertTrdAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
     
