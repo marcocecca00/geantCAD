@@ -97,20 +97,12 @@ public:
     void OnRightButtonDown() override { /* Handled by Qt */ }
     void OnRightButtonUp() override { /* Handled by Qt */ }
     
-    // Mouse wheel for zoom
-    void OnMouseWheelForward() override { this->Dolly(1.1); }
-    void OnMouseWheelBackward() override { this->Dolly(0.9); }
-    
-private:
-    void Dolly(double factor) {
-        vtkCamera* camera = this->GetCurrentRenderer()->GetActiveCamera();
-        if (camera->GetParallelProjection()) {
-            camera->SetParallelScale(camera->GetParallelScale() / factor);
-        } else {
-            camera->Dolly(factor);
-            this->GetCurrentRenderer()->ResetCameraClippingRange();
-        }
-        this->GetInteractor()->Render();
+    // Mouse wheel for zoom - use parent class implementation (safe)
+    void OnMouseWheelForward() override {
+        vtkInteractorStyleTrackballCamera::OnMouseWheelForward();
+    }
+    void OnMouseWheelBackward() override {
+        vtkInteractorStyleTrackballCamera::OnMouseWheelBackward();
     }
 };
 #include <QContextMenuEvent>
