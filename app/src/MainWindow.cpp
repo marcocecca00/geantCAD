@@ -691,9 +691,10 @@ void MainWindow::connectSignals() {
         VolumeNode* selected = sceneGraph_->getSelected();
         if (selected && selected != sceneGraph_->getRoot()) {
             auto cmd = std::make_unique<DuplicateVolumeCommand>(sceneGraph_, selected);
+            DuplicateVolumeCommand* cmdPtr = cmd.get(); // Save pointer BEFORE move
             commandStack_->execute(std::move(cmd));
             
-            VolumeNode* duplicated = cmd->getDuplicatedNode();
+            VolumeNode* duplicated = cmdPtr->getDuplicatedNode();
             if (duplicated) {
                 // Move duplicated node slightly for visibility
                 auto& t = duplicated->getTransform();

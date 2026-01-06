@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QFormLayout>
+#include <QVBoxLayout>
 #include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QComboBox>
@@ -62,7 +63,14 @@ private:
     // Geometry (Shape Parameters)
     CollapsibleGroupBox* geometryGroup_;
     QWidget* geometryContent_;
-    QFormLayout* geometryLayout_;
+    QVBoxLayout* geometryMainLayout_;
+    
+    // Shape containers (for show/hide without removing from layout)
+    QWidget* boxContainer_;
+    QWidget* tubeContainer_;
+    QWidget* sphereContainer_;
+    QWidget* coneContainer_;
+    QWidget* trdContainer_;
     
     // Box parameters
     QDoubleSpinBox* boxX_, *boxY_, *boxZ_;

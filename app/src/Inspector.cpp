@@ -138,13 +138,17 @@ void Inspector::setupUI() {
     
     // Geometry (Shape Parameters) - collapsible, expanded by default
     geometryContent_ = new QWidget(this);
-    geometryLayout_ = new QFormLayout(geometryContent_);
-    geometryLayout_->setContentsMargins(8, 8, 8, 8);
+    geometryMainLayout_ = new QVBoxLayout(geometryContent_);
+    geometryMainLayout_->setContentsMargins(8, 8, 8, 8);
+    geometryMainLayout_->setSpacing(4);
     
-    // Box parameters
-    boxX_ = new QDoubleSpinBox(this);
-    boxY_ = new QDoubleSpinBox(this);
-    boxZ_ = new QDoubleSpinBox(this);
+    // === Box container ===
+    boxContainer_ = new QWidget(geometryContent_);
+    QFormLayout* boxLayout = new QFormLayout(boxContainer_);
+    boxLayout->setContentsMargins(0, 0, 0, 0);
+    boxX_ = new QDoubleSpinBox(boxContainer_);
+    boxY_ = new QDoubleSpinBox(boxContainer_);
+    boxZ_ = new QDoubleSpinBox(boxContainer_);
     boxX_->setRange(0.1, 10000);
     boxY_->setRange(0.1, 10000);
     boxZ_->setRange(0.1, 10000);
@@ -154,14 +158,21 @@ void Inspector::setupUI() {
     boxX_->setDecimals(2);
     boxY_->setDecimals(2);
     boxZ_->setDecimals(2);
+    boxLayout->addRow("Half-length X:", boxX_);
+    boxLayout->addRow("Half-length Y:", boxY_);
+    boxLayout->addRow("Half-length Z:", boxZ_);
     connect(boxX_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(boxY_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(boxZ_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
+    geometryMainLayout_->addWidget(boxContainer_);
     
-    // Tube parameters
-    tubeRmin_ = new QDoubleSpinBox(this);
-    tubeRmax_ = new QDoubleSpinBox(this);
-    tubeDz_ = new QDoubleSpinBox(this);
+    // === Tube container ===
+    tubeContainer_ = new QWidget(geometryContent_);
+    QFormLayout* tubeLayout = new QFormLayout(tubeContainer_);
+    tubeLayout->setContentsMargins(0, 0, 0, 0);
+    tubeRmin_ = new QDoubleSpinBox(tubeContainer_);
+    tubeRmax_ = new QDoubleSpinBox(tubeContainer_);
+    tubeDz_ = new QDoubleSpinBox(tubeContainer_);
     tubeRmin_->setRange(0.0, 10000);
     tubeRmax_->setRange(0.1, 10000);
     tubeDz_->setRange(0.1, 10000);
@@ -171,28 +182,41 @@ void Inspector::setupUI() {
     tubeRmin_->setDecimals(2);
     tubeRmax_->setDecimals(2);
     tubeDz_->setDecimals(2);
+    tubeLayout->addRow("Inner Radius (Rmin):", tubeRmin_);
+    tubeLayout->addRow("Outer Radius (Rmax):", tubeRmax_);
+    tubeLayout->addRow("Half-height (Dz):", tubeDz_);
     connect(tubeRmin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(tubeRmax_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(tubeDz_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
+    geometryMainLayout_->addWidget(tubeContainer_);
     
-    // Sphere parameters
-    sphereRmin_ = new QDoubleSpinBox(this);
-    sphereRmax_ = new QDoubleSpinBox(this);
+    // === Sphere container ===
+    sphereContainer_ = new QWidget(geometryContent_);
+    QFormLayout* sphereLayout = new QFormLayout(sphereContainer_);
+    sphereLayout->setContentsMargins(0, 0, 0, 0);
+    sphereRmin_ = new QDoubleSpinBox(sphereContainer_);
+    sphereRmax_ = new QDoubleSpinBox(sphereContainer_);
     sphereRmin_->setRange(0.0, 10000);
     sphereRmax_->setRange(0.1, 10000);
     sphereRmin_->setSuffix(" mm");
     sphereRmax_->setSuffix(" mm");
     sphereRmin_->setDecimals(2);
     sphereRmax_->setDecimals(2);
+    sphereLayout->addRow("Inner Radius (Rmin):", sphereRmin_);
+    sphereLayout->addRow("Outer Radius (Rmax):", sphereRmax_);
     connect(sphereRmin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(sphereRmax_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
+    geometryMainLayout_->addWidget(sphereContainer_);
     
-    // Cone parameters
-    coneRmin1_ = new QDoubleSpinBox(this);
-    coneRmax1_ = new QDoubleSpinBox(this);
-    coneRmin2_ = new QDoubleSpinBox(this);
-    coneRmax2_ = new QDoubleSpinBox(this);
-    coneDz_ = new QDoubleSpinBox(this);
+    // === Cone container ===
+    coneContainer_ = new QWidget(geometryContent_);
+    QFormLayout* coneLayout = new QFormLayout(coneContainer_);
+    coneLayout->setContentsMargins(0, 0, 0, 0);
+    coneRmin1_ = new QDoubleSpinBox(coneContainer_);
+    coneRmax1_ = new QDoubleSpinBox(coneContainer_);
+    coneRmin2_ = new QDoubleSpinBox(coneContainer_);
+    coneRmax2_ = new QDoubleSpinBox(coneContainer_);
+    coneDz_ = new QDoubleSpinBox(coneContainer_);
     coneRmin1_->setRange(0.0, 10000);
     coneRmax1_->setRange(0.1, 10000);
     coneRmin2_->setRange(0.0, 10000);
@@ -208,18 +232,27 @@ void Inspector::setupUI() {
     coneRmin2_->setDecimals(2);
     coneRmax2_->setDecimals(2);
     coneDz_->setDecimals(2);
+    coneLayout->addRow("Inner Radius -Z:", coneRmin1_);
+    coneLayout->addRow("Outer Radius -Z:", coneRmax1_);
+    coneLayout->addRow("Inner Radius +Z:", coneRmin2_);
+    coneLayout->addRow("Outer Radius +Z:", coneRmax2_);
+    coneLayout->addRow("Half-height (Dz):", coneDz_);
     connect(coneRmin1_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(coneRmax1_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(coneRmin2_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(coneRmax2_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(coneDz_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
+    geometryMainLayout_->addWidget(coneContainer_);
     
-    // Trd parameters
-    trdDx1_ = new QDoubleSpinBox(this);
-    trdDx2_ = new QDoubleSpinBox(this);
-    trdDy1_ = new QDoubleSpinBox(this);
-    trdDy2_ = new QDoubleSpinBox(this);
-    trdDz_ = new QDoubleSpinBox(this);
+    // === Trd container ===
+    trdContainer_ = new QWidget(geometryContent_);
+    QFormLayout* trdLayout = new QFormLayout(trdContainer_);
+    trdLayout->setContentsMargins(0, 0, 0, 0);
+    trdDx1_ = new QDoubleSpinBox(trdContainer_);
+    trdDx2_ = new QDoubleSpinBox(trdContainer_);
+    trdDy1_ = new QDoubleSpinBox(trdContainer_);
+    trdDy2_ = new QDoubleSpinBox(trdContainer_);
+    trdDz_ = new QDoubleSpinBox(trdContainer_);
     trdDx1_->setRange(0.1, 10000);
     trdDx2_->setRange(0.1, 10000);
     trdDy1_->setRange(0.1, 10000);
@@ -235,11 +268,20 @@ void Inspector::setupUI() {
     trdDy1_->setDecimals(2);
     trdDy2_->setDecimals(2);
     trdDz_->setDecimals(2);
+    trdLayout->addRow("Half-length X at -Z:", trdDx1_);
+    trdLayout->addRow("Half-length X at +Z:", trdDx2_);
+    trdLayout->addRow("Half-length Y at -Z:", trdDy1_);
+    trdLayout->addRow("Half-length Y at +Z:", trdDy2_);
+    trdLayout->addRow("Half-height (Dz):", trdDz_);
     connect(trdDx1_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(trdDx2_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(trdDy1_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(trdDy2_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
     connect(trdDz_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Inspector::onShapeParamsChanged);
+    geometryMainLayout_->addWidget(trdContainer_);
+    
+    // Add stretch at the end
+    geometryMainLayout_->addStretch();
     
     geometryGroup_ = new CollapsibleGroupBox("Geometry", this);
     geometryGroup_->setContent(geometryContent_);
@@ -667,30 +709,12 @@ void Inspector::onOpticalPresetChanged() {
 }
 
 void Inspector::hideAllShapeWidgets() {
-    // Remove all rows from geometry layout
-    while (geometryLayout_->rowCount() > 0) {
-        geometryLayout_->removeRow(0);
-    }
-    
-    // Hide all shape parameter widgets to prevent them showing outside layout
-    boxX_->hide();
-    boxY_->hide();
-    boxZ_->hide();
-    tubeRmin_->hide();
-    tubeRmax_->hide();
-    tubeDz_->hide();
-    sphereRmin_->hide();
-    sphereRmax_->hide();
-    coneRmin1_->hide();
-    coneRmax1_->hide();
-    coneRmin2_->hide();
-    coneRmax2_->hide();
-    coneDz_->hide();
-    trdDx1_->hide();
-    trdDx2_->hide();
-    trdDy1_->hide();
-    trdDy2_->hide();
-    trdDz_->hide();
+    // Hide all shape containers without removing from layout
+    if (boxContainer_) boxContainer_->hide();
+    if (tubeContainer_) tubeContainer_->hide();
+    if (sphereContainer_) sphereContainer_->hide();
+    if (coneContainer_) coneContainer_->hide();
+    if (trdContainer_) trdContainer_->hide();
 }
 
 void Inspector::updateShapeUI() {
@@ -711,12 +735,7 @@ void Inspector::updateShapeUI() {
                 boxX_->setValue(params->x);
                 boxY_->setValue(params->y);
                 boxZ_->setValue(params->z);
-                boxX_->show();
-                boxY_->show();
-                boxZ_->show();
-                geometryLayout_->addRow("Half-length X:", boxX_);
-                geometryLayout_->addRow("Half-length Y:", boxY_);
-                geometryLayout_->addRow("Half-length Z:", boxZ_);
+                boxContainer_->show();
             }
             break;
         }
@@ -726,12 +745,7 @@ void Inspector::updateShapeUI() {
                 tubeRmax_->setValue(params->rmax);
                 tubeDz_->setValue(params->dz);
                 tubeRmin_->setMaximum(tubeRmax_->value() - 0.01);
-                tubeRmin_->show();
-                tubeRmax_->show();
-                tubeDz_->show();
-                geometryLayout_->addRow("Inner Radius (Rmin):", tubeRmin_);
-                geometryLayout_->addRow("Outer Radius (Rmax):", tubeRmax_);
-                geometryLayout_->addRow("Half-height (Dz):", tubeDz_);
+                tubeContainer_->show();
             }
             break;
         }
@@ -740,10 +754,7 @@ void Inspector::updateShapeUI() {
                 sphereRmin_->setValue(params->rmin);
                 sphereRmax_->setValue(params->rmax);
                 sphereRmin_->setMaximum(sphereRmax_->value() - 0.01);
-                sphereRmin_->show();
-                sphereRmax_->show();
-                geometryLayout_->addRow("Inner Radius (Rmin):", sphereRmin_);
-                geometryLayout_->addRow("Outer Radius (Rmax):", sphereRmax_);
+                sphereContainer_->show();
             }
             break;
         }
@@ -756,16 +767,7 @@ void Inspector::updateShapeUI() {
                 coneDz_->setValue(params->dz);
                 coneRmin1_->setMaximum(coneRmax1_->value() - 0.01);
                 coneRmin2_->setMaximum(coneRmax2_->value() - 0.01);
-                coneRmin1_->show();
-                coneRmax1_->show();
-                coneRmin2_->show();
-                coneRmax2_->show();
-                coneDz_->show();
-                geometryLayout_->addRow("Inner Radius -Z (Rmin1):", coneRmin1_);
-                geometryLayout_->addRow("Outer Radius -Z (Rmax1):", coneRmax1_);
-                geometryLayout_->addRow("Inner Radius +Z (Rmin2):", coneRmin2_);
-                geometryLayout_->addRow("Outer Radius +Z (Rmax2):", coneRmax2_);
-                geometryLayout_->addRow("Half-height (Dz):", coneDz_);
+                coneContainer_->show();
             }
             break;
         }
@@ -776,16 +778,7 @@ void Inspector::updateShapeUI() {
                 trdDy1_->setValue(params->dy1);
                 trdDy2_->setValue(params->dy2);
                 trdDz_->setValue(params->dz);
-                trdDx1_->show();
-                trdDx2_->show();
-                trdDy1_->show();
-                trdDy2_->show();
-                trdDz_->show();
-                geometryLayout_->addRow("Half-length X at -Z (Dx1):", trdDx1_);
-                geometryLayout_->addRow("Half-length X at +Z (Dx2):", trdDx2_);
-                geometryLayout_->addRow("Half-length Y at -Z (Dy1):", trdDy1_);
-                geometryLayout_->addRow("Half-length Y at +Z (Dy2):", trdDy2_);
-                geometryLayout_->addRow("Half-height (Dz):", trdDz_);
+                trdContainer_->show();
             }
             break;
         }
