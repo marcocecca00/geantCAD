@@ -3,15 +3,182 @@
 #include <QActionGroup>
 #include <QStyle>
 #include <QLabel>
+#include <QPainter>
+#include <QPixmap>
 
 namespace geantcad {
+
+// Helper to create simple colored icons
+static QIcon createColoredIcon(const QString& text, const QColor& color = QColor("#d4d4d4")) {
+    QPixmap pixmap(20, 20);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(color);
+    QFont font("Segoe UI Symbol", 14);
+    font.setBold(true);
+    painter.setFont(font);
+    painter.drawText(pixmap.rect(), Qt::AlignCenter, text);
+    return QIcon(pixmap);
+}
+
+// Helper to create shape icons
+static QIcon createShapeIcon(const QString& shape, const QColor& fillColor = QColor("#3794ff")) {
+    QPixmap pixmap(20, 20);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(fillColor, 1.5));
+    painter.setBrush(fillColor.darker(150));
+    
+    if (shape == "box") {
+        painter.drawRect(3, 5, 14, 10);
+        // 3D effect
+        painter.drawLine(3, 5, 6, 2);
+        painter.drawLine(17, 5, 20, 2);
+        painter.drawLine(6, 2, 20, 2);
+    } else if (shape == "sphere") {
+        painter.drawEllipse(2, 2, 16, 16);
+    } else if (shape == "tube") {
+        painter.drawEllipse(4, 2, 12, 5);
+        painter.drawLine(4, 4, 4, 15);
+        painter.drawLine(16, 4, 16, 15);
+        painter.drawArc(4, 12, 12, 5, 0, -180 * 16);
+    } else if (shape == "cone") {
+        QPolygon poly;
+        poly << QPoint(10, 2) << QPoint(3, 17) << QPoint(17, 17);
+        painter.drawPolygon(poly);
+    } else if (shape == "trd") {
+        QPolygon poly;
+        poly << QPoint(5, 3) << QPoint(15, 3) << QPoint(17, 17) << QPoint(3, 17);
+        painter.drawPolygon(poly);
+    }
+    
+    return QIcon(pixmap);
+}
+
+// Helper to create tool icons
+static QIcon createToolIcon(const QString& tool, const QColor& color = QColor("#d4d4d4")) {
+    QPixmap pixmap(20, 20);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(color, 1.5));
+    
+    if (tool == "select") {
+        // Arrow cursor
+        QPolygon poly;
+        poly << QPoint(5, 3) << QPoint(5, 16) << QPoint(8, 13) << QPoint(11, 17) << QPoint(13, 16) << QPoint(10, 12) << QPoint(14, 12);
+        painter.setBrush(color);
+        painter.drawPolygon(poly);
+    } else if (tool == "move") {
+        // Cross arrows
+        painter.drawLine(10, 3, 10, 17);
+        painter.drawLine(3, 10, 17, 10);
+        // Arrow heads
+        painter.drawLine(10, 3, 7, 6);
+        painter.drawLine(10, 3, 13, 6);
+        painter.drawLine(10, 17, 7, 14);
+        painter.drawLine(10, 17, 13, 14);
+        painter.drawLine(3, 10, 6, 7);
+        painter.drawLine(3, 10, 6, 13);
+        painter.drawLine(17, 10, 14, 7);
+        painter.drawLine(17, 10, 14, 13);
+    } else if (tool == "rotate") {
+        // Circular arrow
+        painter.drawArc(3, 3, 14, 14, 45 * 16, 270 * 16);
+        painter.drawLine(14, 5, 17, 3);
+        painter.drawLine(14, 5, 17, 8);
+    } else if (tool == "scale") {
+        // Corner arrows
+        painter.drawRect(6, 6, 8, 8);
+        painter.drawLine(3, 3, 6, 6);
+        painter.drawLine(3, 3, 3, 6);
+        painter.drawLine(3, 3, 6, 3);
+        painter.drawLine(17, 17, 14, 14);
+        painter.drawLine(17, 17, 17, 14);
+        painter.drawLine(17, 17, 14, 17);
+    } else if (tool == "measure") {
+        // Ruler
+        painter.drawLine(3, 17, 17, 3);
+        painter.drawLine(3, 17, 3, 13);
+        painter.drawLine(3, 17, 7, 17);
+        painter.drawLine(17, 3, 17, 7);
+        painter.drawLine(17, 3, 13, 3);
+        // Marks
+        painter.drawLine(6, 14, 8, 12);
+        painter.drawLine(10, 10, 12, 8);
+    } else if (tool == "clip") {
+        // Clipping plane
+        painter.drawLine(3, 10, 17, 10);
+        painter.drawRect(5, 4, 10, 12);
+        painter.setPen(QPen(QColor("#f14c4c"), 2));
+        painter.drawLine(3, 10, 17, 10);
+    } else if (tool == "undo") {
+        painter.drawArc(5, 5, 10, 10, 90 * 16, 180 * 16);
+        painter.drawLine(5, 10, 2, 7);
+        painter.drawLine(5, 10, 8, 7);
+    } else if (tool == "redo") {
+        painter.drawArc(5, 5, 10, 10, -90 * 16, 180 * 16);
+        painter.drawLine(15, 10, 18, 7);
+        painter.drawLine(15, 10, 12, 7);
+    } else if (tool == "delete") {
+        painter.setPen(QPen(QColor("#f14c4c"), 2));
+        painter.drawLine(4, 4, 16, 16);
+        painter.drawLine(16, 4, 4, 16);
+    } else if (tool == "duplicate") {
+        painter.drawRect(3, 5, 10, 10);
+        painter.drawRect(7, 3, 10, 10);
+    } else if (tool == "group") {
+        painter.drawRect(3, 3, 6, 6);
+        painter.drawRect(11, 11, 6, 6);
+        painter.setPen(QPen(color, 1, Qt::DashLine));
+        painter.drawRect(2, 2, 16, 16);
+    } else if (tool == "frame") {
+        painter.drawRect(4, 4, 12, 12);
+        painter.drawLine(10, 1, 10, 4);
+        painter.drawLine(10, 16, 10, 19);
+        painter.drawLine(1, 10, 4, 10);
+        painter.drawLine(16, 10, 19, 10);
+    } else if (tool == "reset") {
+        painter.drawEllipse(4, 4, 12, 12);
+        painter.drawLine(10, 4, 10, 10);
+        painter.drawLine(10, 10, 14, 7);
+    } else if (tool == "view") {
+        // Eye icon
+        painter.drawEllipse(3, 6, 14, 8);
+        painter.setBrush(color);
+        painter.drawEllipse(8, 8, 4, 4);
+    }
+    
+    return QIcon(pixmap);
+}
 
 Toolbar::Toolbar(QWidget* parent)
     : QToolBar(parent)
 {
     setMovable(false);
-    setIconSize(QSize(20, 20));
-    setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    setIconSize(QSize(22, 22));
+    setToolButtonStyle(Qt::ToolButtonIconOnly); // Compact: icons only
+    
+    // Compact styling
+    setStyleSheet(R"(
+        QToolBar {
+            spacing: 2px;
+            padding: 2px 4px;
+        }
+        QToolButton {
+            padding: 4px;
+            margin: 1px;
+            border-radius: 4px;
+        }
+        QToolButton:hover {
+            background-color: #3a3d3e;
+        }
+        QToolButton:checked {
+            background-color: #094771;
+        }
+    )");
     
     setupActions();
 }
@@ -19,170 +186,156 @@ Toolbar::Toolbar(QWidget* parent)
 void Toolbar::setupActions() {
     createHistorySection();
     addSeparator();
-    createViewSection();
-    addSeparator();
     createManipulationSection();
     addSeparator();
     createShapeSection();
     addSeparator();
     createEditSection();
     addSeparator();
+    createViewSection();
+    addSeparator();
     createAnalysisSection();
 }
 
 void Toolbar::createHistorySection() {
-    // Category label
-    QLabel* label = new QLabel(" History ");
-    label->setStyleSheet("color: #888; font-size: 9pt;");
-    addWidget(label);
-    
     // Undo
-    QAction* undoAction = addAction(style()->standardIcon(QStyle::SP_ArrowBack), "Undo");
+    QAction* undoAction = addAction(createToolIcon("undo"), "Undo");
     undoAction->setShortcut(QKeySequence::Undo);
     undoAction->setToolTip("Undo (Ctrl+Z)");
     connect(undoAction, &QAction::triggered, this, &Toolbar::undoAction);
     
     // Redo
-    QAction* redoAction = addAction(style()->standardIcon(QStyle::SP_ArrowForward), "Redo");
+    QAction* redoAction = addAction(createToolIcon("redo"), "Redo");
     redoAction->setShortcut(QKeySequence::Redo);
     redoAction->setToolTip("Redo (Ctrl+Shift+Z)");
     connect(redoAction, &QAction::triggered, this, &Toolbar::redoAction);
 }
 
 void Toolbar::createViewSection() {
-    // Category label
-    QLabel* label = new QLabel(" View ");
-    label->setStyleSheet("color: #888; font-size: 9pt;");
-    addWidget(label);
-    
     // View dropdown button
     QMenu* viewMenu = new QMenu(this);
+    viewMenu->setStyleSheet("QMenu { min-width: 150px; }");
     
-    viewMenu->addAction("Front (Numpad 1)", this, &Toolbar::viewFront);
-    viewMenu->addAction("Back (Ctrl+Numpad 1)", this, &Toolbar::viewBack);
-    viewMenu->addAction("Left (Numpad 3)", this, &Toolbar::viewLeft);
-    viewMenu->addAction("Right (Ctrl+Numpad 3)", this, &Toolbar::viewRight);
-    viewMenu->addAction("Top (Numpad 7)", this, &Toolbar::viewTop);
-    viewMenu->addAction("Bottom (Ctrl+Numpad 7)", this, &Toolbar::viewBottom);
+    viewMenu->addAction("Front (1)", this, &Toolbar::viewFront);
+    viewMenu->addAction("Back (Ctrl+1)", this, &Toolbar::viewBack);
+    viewMenu->addAction("Left (3)", this, &Toolbar::viewLeft);
+    viewMenu->addAction("Right (Ctrl+3)", this, &Toolbar::viewRight);
+    viewMenu->addAction("Top (7)", this, &Toolbar::viewTop);
+    viewMenu->addAction("Bottom (Ctrl+7)", this, &Toolbar::viewBottom);
     viewMenu->addSeparator();
-    viewMenu->addAction("Isometric (Numpad 0)", this, &Toolbar::viewIsometric);
+    viewMenu->addAction("Isometric (0)", this, &Toolbar::viewIsometric);
     
-    QToolButton* viewBtn = createDropdownButton("Views", style()->standardIcon(QStyle::SP_ComputerIcon), viewMenu);
-    viewBtn->setToolTip("Standard view orientations");
+    QToolButton* viewBtn = createDropdownButton(createToolIcon("view"), viewMenu);
+    viewBtn->setToolTip("Standard Views");
     addWidget(viewBtn);
     
     // Frame Selection
-    QAction* frameAction = addAction(style()->standardIcon(QStyle::SP_FileDialogListView), "Frame");
+    QAction* frameAction = addAction(createToolIcon("frame"), "Frame");
     frameAction->setShortcut(QKeySequence("F"));
-    frameAction->setToolTip("Frame selection (F)");
+    frameAction->setToolTip("Frame Selection (F)");
     connect(frameAction, &QAction::triggered, this, &Toolbar::viewFrameSelection);
     
     // Reset View
-    QAction* resetAction = addAction(style()->standardIcon(QStyle::SP_DialogResetButton), "Reset");
+    QAction* resetAction = addAction(createToolIcon("reset"), "Reset");
     resetAction->setShortcut(QKeySequence("Home"));
-    resetAction->setToolTip("Reset view (Home)");
+    resetAction->setToolTip("Reset View (Home)");
     connect(resetAction, &QAction::triggered, this, &Toolbar::viewReset);
 }
 
 void Toolbar::createManipulationSection() {
-    // Category label
-    QLabel* label = new QLabel(" Tools ");
-    label->setStyleSheet("color: #888; font-size: 9pt;");
-    addWidget(label);
-    
     // Tool actions (mutually exclusive)
     QActionGroup* toolGroup = new QActionGroup(this);
     toolGroup->setExclusive(true);
     
     // Select tool
-    selectAction_ = addAction(style()->standardIcon(QStyle::SP_ArrowUp), "Select");
+    selectAction_ = addAction(createToolIcon("select"), "Select");
     selectAction_->setCheckable(true);
     selectAction_->setChecked(true);
     selectAction_->setShortcut(QKeySequence("S"));
-    selectAction_->setToolTip("Select tool (S) - Click to select objects");
+    selectAction_->setToolTip("Select (S)");
     toolGroup->addAction(selectAction_);
     connect(selectAction_, &QAction::triggered, this, &Toolbar::toolSelect);
     
     // Move tool
-    moveAction_ = addAction(style()->standardIcon(QStyle::SP_DialogApplyButton), "Move");
+    moveAction_ = addAction(createToolIcon("move"), "Move");
     moveAction_->setCheckable(true);
     moveAction_->setShortcut(QKeySequence("G"));
-    moveAction_->setToolTip("Move tool (G) - Translate selected objects");
+    moveAction_->setToolTip("Move (G)");
     toolGroup->addAction(moveAction_);
     connect(moveAction_, &QAction::triggered, this, &Toolbar::toolMove);
     
     // Rotate tool
-    rotateAction_ = addAction(style()->standardIcon(QStyle::SP_BrowserReload), "Rotate");
+    rotateAction_ = addAction(createToolIcon("rotate"), "Rotate");
     rotateAction_->setCheckable(true);
     rotateAction_->setShortcut(QKeySequence("R"));
-    rotateAction_->setToolTip("Rotate tool (R) - Rotate selected objects");
+    rotateAction_->setToolTip("Rotate (R)");
     toolGroup->addAction(rotateAction_);
     connect(rotateAction_, &QAction::triggered, this, &Toolbar::toolRotate);
     
     // Scale tool
-    scaleAction_ = addAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), "Scale");
+    scaleAction_ = addAction(createToolIcon("scale"), "Scale");
     scaleAction_->setCheckable(true);
     scaleAction_->setShortcut(QKeySequence("T"));
-    scaleAction_->setToolTip("Scale tool (T) - Scale selected objects");
+    scaleAction_->setToolTip("Scale (T)");
     toolGroup->addAction(scaleAction_);
     connect(scaleAction_, &QAction::triggered, this, &Toolbar::toolScale);
 }
 
 void Toolbar::createShapeSection() {
-    // Category label
-    QLabel* label = new QLabel(" Shapes ");
-    label->setStyleSheet("color: #888; font-size: 9pt;");
-    addWidget(label);
-    
     // Shapes dropdown menu
     QMenu* shapeMenu = new QMenu(this);
+    shapeMenu->setStyleSheet("QMenu { min-width: 150px; }");
     
-    QAction* boxAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_FileIcon), "Box");
+    QAction* boxAction = shapeMenu->addAction(createShapeIcon("box"), "Box");
     boxAction->setShortcut(QKeySequence("Ctrl+Shift+B"));
     boxAction->setToolTip("Create Box (Ctrl+Shift+B)");
     connect(boxAction, &QAction::triggered, this, &Toolbar::createBox);
     
-    QAction* tubeAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_DirIcon), "Tube");
+    QAction* tubeAction = shapeMenu->addAction(createShapeIcon("tube"), "Cylinder");
     tubeAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
-    tubeAction->setToolTip("Create Tube/Cylinder (Ctrl+Shift+T)");
+    tubeAction->setToolTip("Create Cylinder (Ctrl+Shift+T)");
     connect(tubeAction, &QAction::triggered, this, &Toolbar::createTube);
     
-    QAction* sphereAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_ComputerIcon), "Sphere");
+    QAction* sphereAction = shapeMenu->addAction(createShapeIcon("sphere"), "Sphere");
     sphereAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
     sphereAction->setToolTip("Create Sphere (Ctrl+Shift+S)");
     connect(sphereAction, &QAction::triggered, this, &Toolbar::createSphere);
     
-    QAction* coneAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_DriveCDIcon), "Cone");
+    QAction* coneAction = shapeMenu->addAction(createShapeIcon("cone"), "Cone");
     coneAction->setShortcut(QKeySequence("Ctrl+Shift+C"));
     coneAction->setToolTip("Create Cone (Ctrl+Shift+C)");
     connect(coneAction, &QAction::triggered, this, &Toolbar::createCone);
     
-    QAction* trdAction = shapeMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), "Trapezoid");
+    QAction* trdAction = shapeMenu->addAction(createShapeIcon("trd"), "Trapezoid");
     trdAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
-    trdAction->setToolTip("Create Trapezoid/Trd (Ctrl+Shift+D)");
+    trdAction->setToolTip("Create Trapezoid (Ctrl+Shift+D)");
     connect(trdAction, &QAction::triggered, this, &Toolbar::createTrd);
     
-    QToolButton* shapeBtn = createDropdownButton("Add Shape", style()->standardIcon(QStyle::SP_FileDialogNewFolder), shapeMenu);
-    shapeBtn->setToolTip("Add primitive shapes to scene");
+    // Main button with + icon
+    QPixmap plusPixmap(22, 22);
+    plusPixmap.fill(Qt::transparent);
+    QPainter painter(&plusPixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#4ec9b0"), 2));
+    painter.drawLine(11, 4, 11, 18);
+    painter.drawLine(4, 11, 18, 11);
+    
+    QToolButton* shapeBtn = createDropdownButton(QIcon(plusPixmap), shapeMenu);
+    shapeBtn->setToolTip("Add Shape");
     addWidget(shapeBtn);
 }
 
 void Toolbar::createEditSection() {
-    // Category label
-    QLabel* label = new QLabel(" Edit ");
-    label->setStyleSheet("color: #888; font-size: 9pt;");
-    addWidget(label);
-    
     // Duplicate
-    QAction* duplicateAction = addAction(style()->standardIcon(QStyle::SP_FileDialogNewFolder), "Duplicate");
+    QAction* duplicateAction = addAction(createToolIcon("duplicate"), "Duplicate");
     duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
-    duplicateAction->setToolTip("Duplicate selected (Ctrl+D)");
+    duplicateAction->setToolTip("Duplicate (Ctrl+D)");
     connect(duplicateAction, &QAction::triggered, this, &Toolbar::duplicateSelected);
     
     // Delete
-    QAction* deleteAction = addAction(style()->standardIcon(QStyle::SP_TrashIcon), "Delete");
+    QAction* deleteAction = addAction(createToolIcon("delete"), "Delete");
     deleteAction->setShortcut(QKeySequence::Delete);
-    deleteAction->setToolTip("Delete selected (Delete)");
+    deleteAction->setToolTip("Delete (Del)");
     connect(deleteAction, &QAction::triggered, this, &Toolbar::deleteSelected);
     
     // Group/Ungroup menu
@@ -196,43 +349,43 @@ void Toolbar::createEditSection() {
     ungroupAction->setShortcut(QKeySequence("Ctrl+Shift+G"));
     connect(ungroupAction, &QAction::triggered, this, &Toolbar::ungroupSelected);
     
-    QToolButton* groupBtn = createDropdownButton("Group", style()->standardIcon(QStyle::SP_DirIcon), groupMenu);
-    groupBtn->setToolTip("Group/Ungroup objects");
+    QToolButton* groupBtn = createDropdownButton(createToolIcon("group"), groupMenu);
+    groupBtn->setToolTip("Group/Ungroup");
     addWidget(groupBtn);
 }
 
 void Toolbar::createAnalysisSection() {
-    // Category label
-    QLabel* label = new QLabel(" Analysis ");
-    label->setStyleSheet("color: #888; font-size: 9pt;");
-    addWidget(label);
-    
     // Measure tool
-    measureAction_ = addAction(style()->standardIcon(QStyle::SP_FileDialogInfoView), "Measure");
+    measureAction_ = addAction(createToolIcon("measure"), "Measure");
     measureAction_->setCheckable(true);
-    measureAction_->setToolTip("Measurement tool - distance, angle, coordinates");
+    measureAction_->setToolTip("Measure Tool");
     connect(measureAction_, &QAction::triggered, this, &Toolbar::toggleMeasureTool);
     
     // Clipping planes
-    clippingAction_ = addAction(style()->standardIcon(QStyle::SP_TitleBarNormalButton), "Clip");
+    clippingAction_ = addAction(createToolIcon("clip"), "Clip");
     clippingAction_->setCheckable(true);
-    clippingAction_->setToolTip("Clipping planes - section view");
+    clippingAction_->setToolTip("Clipping Plane");
     connect(clippingAction_, &QAction::triggered, this, &Toolbar::toggleClippingPlanes);
 }
 
-QToolButton* Toolbar::createDropdownButton(const QString& text, const QIcon& icon, QMenu* menu) {
+QToolButton* Toolbar::createDropdownButton(const QIcon& icon, QMenu* menu) {
     QToolButton* button = new QToolButton(this);
-    button->setText(text);
     button->setIcon(icon);
     button->setMenu(menu);
     button->setPopupMode(QToolButton::InstantPopup);
-    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     
     // Style for dropdown
-    button->setStyleSheet(
-        "QToolButton { padding: 4px 8px; }"
-        "QToolButton::menu-indicator { image: none; }"
-    );
+    button->setStyleSheet(R"(
+        QToolButton {
+            padding: 4px;
+            border-radius: 4px;
+        }
+        QToolButton::menu-indicator { 
+            image: none;
+            width: 0;
+        }
+    )");
     
     return button;
 }

@@ -52,6 +52,7 @@ MainWindow::MainWindow(QWidget *parent)
     , clippingDock_(nullptr)
     , measureDock_(nullptr)
 {
+    setWindowTitle("GeantCAD");
     applyStylesheet();
     setupUI(); // Must be called before loadPreferences() so viewport_ exists
     setupMenus();
@@ -72,27 +73,20 @@ void MainWindow::setupUI() {
     setCentralWidget(centralWidget);
     
     QHBoxLayout* mainLayout = new QHBoxLayout(centralWidget);
-    mainLayout->setContentsMargins(2, 2, 2, 2);
-    mainLayout->setSpacing(2);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
     
     mainSplitter_ = new QSplitter(Qt::Horizontal, this);
     mainLayout->addWidget(mainSplitter_);
     
     // Left: Scene Hierarchy (Outliner only)
-    QGroupBox* sceneGroup = new QGroupBox("Scene", this);
-    QVBoxLayout* sceneLayout = new QVBoxLayout(sceneGroup);
-    sceneLayout->setContentsMargins(2, 2, 2, 2);
-    
     outliner_ = new Outliner(this);
-    sceneLayout->addWidget(outliner_);
     outliner_->setSceneGraph(sceneGraph_);
-    
-    sceneGroup->setMinimumWidth(200);
-    sceneGroup->setMaximumWidth(300);
-    mainSplitter_->addWidget(sceneGroup);
+    outliner_->setMinimumWidth(180);
+    outliner_->setMaximumWidth(280);
+    mainSplitter_->addWidget(outliner_);
     
     // Center: Viewport 3D (takes most space)
-    // Create container widget for viewport + camera control overlay
     QWidget* viewportContainer = new QWidget(this);
     QVBoxLayout* viewportLayout = new QVBoxLayout(viewportContainer);
     viewportLayout->setContentsMargins(0, 0, 0, 0);
@@ -106,39 +100,35 @@ void MainWindow::setupUI() {
     
     mainSplitter_->addWidget(viewportContainer);
     
-    // Right: Split verticale - Properties (top) + Simulation Config (bottom)
-    rightSplitter_ = new QSplitter(Qt::Vertical, this);
-    rightSplitter_->setMinimumWidth(300);
-    rightSplitter_->setMaximumWidth(450);
+    // Right: Tab widget for panels (saves vertical space!)
+    rightTabs_ = new QTabWidget(this);
+    rightTabs_->setTabPosition(QTabWidget::North);
+    rightTabs_->setMinimumWidth(280);
+    rightTabs_->setMaximumWidth(380);
     
-    // Top: Properties Panel (Inspector with all object properties)
+    // Tab 1: Properties Panel (Inspector with all object properties)
     propertiesPanel_ = new PropertiesPanel(this);
     propertiesPanel_->setSceneGraph(sceneGraph_);
     propertiesPanel_->setCommandStack(commandStack_);
     inspector_ = propertiesPanel_->getInspector(); // Keep reference for compatibility
-    rightSplitter_->addWidget(propertiesPanel_);
+    rightTabs_->addTab(propertiesPanel_, "Properties");
     
-    // Bottom: Simulation Config Panel (Physics, Source, Output, Build & Run)
+    // Tab 2: Simulation Config Panel (Physics, Source, Output, Build & Run)
     simulationPanel_ = new SimulationConfigPanel(this);
     physicsPanel_ = simulationPanel_->getPhysicsPanel();
     outputPanel_ = simulationPanel_->getOutputPanel();
     particleGunPanel_ = simulationPanel_->getParticleGunPanel();
-    rightSplitter_->addWidget(simulationPanel_);
+    rightTabs_->addTab(simulationPanel_, "Simulation");
     
-    // Set splitter sizes: Properties 60%, Simulation 40%
-    rightSplitter_->setStretchFactor(0, 60);
-    rightSplitter_->setStretchFactor(1, 40);
-    rightSplitter_->setSizes({400, 300});
+    mainSplitter_->addWidget(rightTabs_);
     
-    mainSplitter_->addWidget(rightSplitter_);
+    // Set stretch factors: Left fixed, Viewport expands, Right fixed
+    mainSplitter_->setStretchFactor(0, 0);
+    mainSplitter_->setStretchFactor(1, 1);
+    mainSplitter_->setStretchFactor(2, 0);
     
-    // Set stretch factors: Left 20%, Viewport 50%, Right 30%
-    mainSplitter_->setStretchFactor(0, 20);
-    mainSplitter_->setStretchFactor(1, 50);
-    mainSplitter_->setStretchFactor(2, 30);
-    
-    // Set initial sizes
-    mainSplitter_->setSizes({200, 800, 350});
+    // Set initial sizes: compact sidebar widths
+    mainSplitter_->setSizes({200, 600, 300});
     
     // Add ViewCube overlay in top-right corner
     viewCube_ = new ViewCube(viewport_);
@@ -986,8 +976,15 @@ void MainWindow::applyStylesheet() {
 void MainWindow::loadPreferences() {
     QSettings settings("GeantCAD", "GeantCAD");
     
-    // Restore window geometry and state
-    restoreGeometry(settings.value("geometry").toByteArray());
+    // Set reasonable default size if no saved geometry
+    QByteArray geometry = settings.value("geometry").toByteArray();
+    if (geometry.isEmpty()) {
+        // Default size: 1200x700 - fits most screens
+        resize(1200, 700);
+    } else {
+        restoreGeometry(geometry);
+    }
+    
     restoreState(settings.value("windowState").toByteArray());
     
     // Restore splitter sizes
@@ -996,14 +993,6 @@ void MainWindow::loadPreferences() {
         if (!sizes.isEmpty()) {
             mainSplitter_->setSizes(sizes);
         }
-    }
-    
-    // Restore grid settings
-    if (viewport_) {
-        bool gridVisible = settings.value("gridVisible", true).toBool();
-        double gridSpacing = settings.value("gridSpacing", 50.0).toDouble();
-        viewport_->setGridVisible(gridVisible);
-        viewport_->setGridSpacing(gridSpacing);
     }
 }
 
@@ -1017,12 +1006,6 @@ void MainWindow::savePreferences() {
     // Save splitter sizes
     if (mainSplitter_) {
         settings.setValue("mainSplitterSizes", QVariant::fromValue(mainSplitter_->sizes()));
-    }
-    
-    // Save grid settings
-    if (viewport_) {
-        settings.setValue("gridVisible", viewport_->isGridVisible());
-        settings.setValue("gridSpacing", viewport_->getGridSpacing());
     }
 }
 

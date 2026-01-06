@@ -8,6 +8,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QDockWidget>
+#include <QTabWidget>
 #include "Viewport3D.hh"
 #include "Outliner.hh"
 #include "Inspector.hh"
@@ -74,12 +75,12 @@ private:
 
     // UI Components
     QSplitter* mainSplitter_;
-    QSplitter* rightSplitter_; // Vertical splitter for Properties + Simulation
+    QTabWidget* rightTabs_; // Tabs for Properties + Simulation + Physics
     
     Viewport3D* viewport_;
     Outliner* outliner_; // Left: Scene hierarchy only
-    PropertiesPanel* propertiesPanel_; // Right top: Object properties
-    SimulationConfigPanel* simulationPanel_; // Right bottom: Simulation config
+    PropertiesPanel* propertiesPanel_; // Tab: Object properties
+    SimulationConfigPanel* simulationPanel_; // Tab: Simulation config
     Toolbar* toolbar_;
     
     // New integrated widgets

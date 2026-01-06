@@ -71,7 +71,7 @@ private:
     void createAnalysisSection();
     void createHistorySection();
     
-    QToolButton* createDropdownButton(const QString& text, const QIcon& icon, QMenu* menu);
+    QToolButton* createDropdownButton(const QIcon& icon, QMenu* menu);
     
     // Tool buttons for state tracking
     QAction* selectAction_ = nullptr;
