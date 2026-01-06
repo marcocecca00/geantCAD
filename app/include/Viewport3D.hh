@@ -224,6 +224,7 @@ private:
     void createGizmos();
     void updateGizmoPosition();
     void showGizmo(bool show);
+    void updateGizmoHighlight(int hoveredAxis);
     int pickGizmoAxis(int x, int y);
     
     // Smart guides system

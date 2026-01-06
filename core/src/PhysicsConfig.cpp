@@ -91,7 +91,7 @@ std::string PhysicsConfig::generatePhysicsCode() const {
     if (emEnabled) {
         switch (emOption) {
             case EMOption::Standard:
-                oss << "    RegisterPhysics(new G4EmStandardPhysics());\n";
+        oss << "    RegisterPhysics(new G4EmStandardPhysics());\n";
                 break;
             case EMOption::Option1:
                 oss << "    RegisterPhysics(new G4EmStandardPhysics_option1());\n";
@@ -135,10 +135,10 @@ std::string PhysicsConfig::generatePhysicsCode() const {
         
         switch (hadronicModel) {
             case HadronicModel::FTFP_BERT:
-                oss << "    RegisterPhysics(new G4HadronPhysicsFTFP_BERT());\n";
+            oss << "    RegisterPhysics(new G4HadronPhysicsFTFP_BERT());\n";
                 break;
             case HadronicModel::QGSP_BERT:
-                oss << "    RegisterPhysics(new G4HadronPhysicsQGSP_BERT());\n";
+            oss << "    RegisterPhysics(new G4HadronPhysicsQGSP_BERT());\n";
                 break;
             case HadronicModel::QGSP_BIC:
                 oss << "    RegisterPhysics(new G4HadronPhysicsQGSP_BIC());\n";

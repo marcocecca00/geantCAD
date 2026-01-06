@@ -914,14 +914,24 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
         return;
     }
     
+    // Middle button always controls camera (Shapr3D style)
+    if (event->button() == Qt::MiddleButton) {
+        QVTKOpenGLNativeWidget::mousePressEvent(event);
+        return;
+    }
+    
     // Store mouse position for drag detection
     if (event->button() == Qt::LeftButton) {
         lastPickPos_ = event->pos();
         int x = event->pos().x();
         int y = event->pos().y();
         
-        // Check if we clicked on a gizmo
-        if (interactionMode_ != InteractionMode::Select && sceneGraph_) {
+        VolumeNode* selected = sceneGraph_ ? sceneGraph_->getSelected() : nullptr;
+        bool hasSelection = selected && selected != sceneGraph_->getRoot();
+        
+        // In manipulation modes with a selection, check gizmos and object first
+        if (interactionMode_ != InteractionMode::Select && hasSelection) {
+            // Check if we clicked on a gizmo
             int gizmoAxis = pickGizmoAxis(x, y);
             if (gizmoAxis >= 0) {
                 activeGizmoAxis_ = gizmoAxis;
@@ -934,52 +944,72 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                 else if (gizmoAxis == 4) setConstraintPlane(ConstraintPlane::XZ);
                 else if (gizmoAxis == 5) setConstraintPlane(ConstraintPlane::YZ);
                 
-                // Start manipulation
-                VolumeNode* selected = sceneGraph_->getSelected();
-                if (selected && selected != sceneGraph_->getRoot()) {
-                    isDragging_ = true;
-                    draggedNode_ = selected;
-                    dragStartTransform_ = selected->getTransform();
-                    dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
-                    return;
+                isDragging_ = true;
+                draggedNode_ = selected;
+                dragStartTransform_ = selected->getTransform();
+                dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
+                return; // Block camera - we're manipulating
+            }
+            
+            // Check if we clicked on the object or anywhere (start free drag)
+            vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+            picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
+            
+            vtkActor* pickedActor = picker->GetActor();
+            VolumeNode* pickedNode = nullptr;
+            
+            if (pickedActor) {
+                for (const auto& pair : actors_) {
+                    if (pair.second && pair.second.GetPointer() == pickedActor) {
+                        pickedNode = pair.first;
+                        break;
+                    }
                 }
+            }
+            
+            // Start dragging if we clicked on the selected object OR on gizmo
+            if (pickedNode == selected || pickedNode == nullptr) {
+                // Set to free movement if no axis constraint was set
+                if (activeGizmoAxis_ < 0) {
+                    setConstraintPlane(ConstraintPlane::None);
+                }
+                isDragging_ = true;
+                draggedNode_ = selected;
+                dragStartTransform_ = selected->getTransform();
+                dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
+                return; // Block camera - we're manipulating
             }
         }
         
-        // Check if we should start manipulation (click on object)
-        if ((interactionMode_ == InteractionMode::Move || 
-             interactionMode_ == InteractionMode::Rotate ||
-             interactionMode_ == InteractionMode::Scale) && sceneGraph_) {
-            VolumeNode* selected = sceneGraph_->getSelected();
-            if (selected && selected != sceneGraph_->getRoot()) {
-                vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
-                picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
-                
-                vtkActor* pickedActor = picker->GetActor();
-                VolumeNode* pickedNode = nullptr;
-                
-                if (pickedActor) {
-                    for (const auto& pair : actors_) {
-                        if (pair.second && pair.second.GetPointer() == pickedActor) {
-                            pickedNode = pair.first;
-                            break;
-                        }
+        // In Select mode, pick objects normally
+        if (interactionMode_ == InteractionMode::Select && sceneGraph_) {
+            vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+            picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
+            
+            vtkActor* pickedActor = picker->GetActor();
+            VolumeNode* pickedNode = nullptr;
+            
+            if (pickedActor) {
+                for (const auto& pair : actors_) {
+                    if (pair.second && pair.second.GetPointer() == pickedActor) {
+                        pickedNode = pair.first;
+                        break;
                     }
                 }
-                
-                // Start dragging if we clicked on the selected object
-                if (pickedNode == selected) {
-                    isDragging_ = true;
-                    draggedNode_ = selected;
-                    dragStartTransform_ = selected->getTransform();
-                    dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
-                    return;
-                }
+            }
+            
+            if (pickedNode && pickedNode != sceneGraph_->getRoot()) {
+                sceneGraph_->setSelected(pickedNode);
+                updateSelectionHighlight(pickedNode);
+                emit selectionChanged(pickedNode);
             }
         }
     }
     
-    QVTKOpenGLNativeWidget::mousePressEvent(event);
+    // Only allow camera control in Select mode (with left button) or always with middle button
+    if (interactionMode_ == InteractionMode::Select) {
+        QVTKOpenGLNativeWidget::mousePressEvent(event);
+    }
 #else
     QWidget::mousePressEvent(event);
 #endif
@@ -987,11 +1017,11 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
-    // Block camera movement when in manipulation mode (Move/Rotate/Scale)
-    // Camera only moves in Select mode or when no object is selected
-    bool blockCamera = (interactionMode_ != InteractionMode::Select) && 
-                       sceneGraph_ && sceneGraph_->getSelected() &&
-                       sceneGraph_->getSelected() != sceneGraph_->getRoot();
+    // Handle gizmo hover highlighting
+    if (!isDragging_ && interactionMode_ != InteractionMode::Select) {
+        int hoveredAxis = pickGizmoAxis(event->pos().x(), event->pos().y());
+        updateGizmoHighlight(hoveredAxis);
+    }
     
     if (isDragging_ && draggedNode_) {
         // IMPORTANT: Don't call parent class when dragging to prevent camera movement
@@ -1003,12 +1033,13 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         int deltaY = y - lastPickPos_.y();
         
         if (interactionMode_ == InteractionMode::Move) {
-            // Use screen-space delta for more predictable movement
-            // VERY REDUCED sensitivity for precise control
+            // Shapr3D-like movement: screen-space 1:1 feel
             vtkCamera* camera = renderer_->GetActiveCamera();
             double cameraDistance = camera->GetDistance();
-            double moveFactor = cameraDistance / 2000.0; // Much slower movement
-            moveFactor = std::max(0.01, std::min(1.0, moveFactor)); // Tighter clamp
+            
+            // Scale factor: ~1mm per pixel at medium zoom
+            double moveFactor = cameraDistance / 1000.0;
+            moveFactor = std::max(0.1, std::min(5.0, moveFactor));
             
             // Calculate world delta based on camera orientation
             double* viewUp = camera->GetViewUp();
@@ -1028,11 +1059,11 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
                 viewRight[2] /= rightLen;
             }
             
-            // Use smaller delta multiplier for smoother motion
+            // Natural 1:1 movement with proper scaling
             QVector3D delta(
-                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor * 0.15,
-                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor * 0.15,
-                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor * 0.15
+                (viewRight[0] * deltaX - viewUp[0] * deltaY) * moveFactor,
+                (viewRight[1] * deltaX - viewUp[1] * deltaY) * moveFactor,
+                (viewRight[2] * deltaX - viewUp[2] * deltaY) * moveFactor
             );
             
             // Add delta to current position
@@ -1223,8 +1254,8 @@ void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
         }
     }
     
-    // Block camera movement in manipulation modes when object is selected
-    if (!blockCamera) {
+    // Only allow camera control in Select mode (or with middle mouse button which is handled by VTK)
+    if (interactionMode_ == InteractionMode::Select) {
         QVTKOpenGLNativeWidget::mouseMoveEvent(event);
     }
 #else
@@ -1583,64 +1614,81 @@ double Viewport3D::getDepthAtPosition(int x, int y) {
 void Viewport3D::createGizmos() {
     if (!renderer_) return;
     
-    const double arrowLength = 100.0;  // Increased for better visibility
-    const double arrowRadius = 5.0;    // Thicker arrows
-    const double planeSize = 30.0;     // Larger plane handles
+    // Modern Shapr3D-style gizmos - will be scaled dynamically based on camera distance
     
-    // === Create arrow gizmos for translation ===
+    // === Create smooth arrow gizmos for translation ===
     auto createArrow = [&](double r, double g, double b, double dirX, double dirY, double dirZ) {
-        vtkSmartPointer<vtkArrowSource> arrow = vtkSmartPointer<vtkArrowSource>::New();
-        arrow->SetTipResolution(16);
-        arrow->SetShaftResolution(16);
-        arrow->SetTipRadius(0.15);
-        arrow->SetTipLength(0.3);
-        arrow->SetShaftRadius(0.05);
+        // Create a smooth, anti-aliased arrow with cylinder shaft and cone tip
+        vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
+        
+        // Shaft (cylinder)
+        vtkSmartPointer<vtkCylinderSource> shaft = vtkSmartPointer<vtkCylinderSource>::New();
+        shaft->SetHeight(0.7);
+        shaft->SetRadius(0.025);
+        shaft->SetResolution(24);
+        shaft->SetCenter(0, 0.35, 0);
+        shaft->Update();
+        
+        // Tip (cone)
+        vtkSmartPointer<vtkConeSource> tip = vtkSmartPointer<vtkConeSource>::New();
+        tip->SetHeight(0.3);
+        tip->SetRadius(0.08);
+        tip->SetResolution(24);
+        tip->SetCenter(0, 0.85, 0);
+        tip->SetDirection(0, 1, 0);
+        tip->Update();
+        
+        appendFilter->AddInputData(shaft->GetOutput());
+        appendFilter->AddInputData(tip->GetOutput());
+        appendFilter->Update();
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputConnection(arrow->GetOutputPort());
+        mapper->SetInputConnection(appendFilter->GetOutputPort());
         
         vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
         actor->GetProperty()->SetColor(r, g, b);
-        actor->GetProperty()->SetAmbient(0.5);
-        actor->GetProperty()->SetDiffuse(0.8);
-        actor->SetScale(arrowLength, arrowLength, arrowLength);
+        actor->GetProperty()->SetAmbient(0.4);
+        actor->GetProperty()->SetDiffuse(0.7);
+        actor->GetProperty()->SetSpecular(0.3);
+        actor->GetProperty()->SetSpecularPower(20);
         
-        // Orient arrow along direction
+        // Orient arrow along direction (default is Y-up)
         if (dirX > 0) {
-            actor->RotateZ(0);   // Default X direction
+            actor->RotateZ(-90);  // X direction
         } else if (dirY > 0) {
-            actor->RotateZ(90);  // Y direction
+            // Default Y direction - no rotation needed
         } else if (dirZ > 0) {
-            actor->RotateY(-90); // Z direction
+            actor->RotateX(90);   // Z direction
         }
         
         actor->SetPickable(true);
         return actor;
     };
     
-    gizmoXArrow_ = createArrow(1.0, 0.2, 0.2, 1, 0, 0); // Red - X
-    gizmoYArrow_ = createArrow(0.2, 1.0, 0.2, 0, 1, 0); // Green - Y
-    gizmoZArrow_ = createArrow(0.2, 0.4, 1.0, 0, 0, 1); // Blue - Z
+    gizmoXArrow_ = createArrow(0.9, 0.2, 0.2, 1, 0, 0);  // Red - X
+    gizmoYArrow_ = createArrow(0.4, 0.85, 0.2, 0, 1, 0); // Green - Y  
+    gizmoZArrow_ = createArrow(0.2, 0.5, 0.95, 0, 0, 1); // Blue - Z
     
-    // === Create plane gizmos (small squares) ===
+    // === Create plane gizmos (modern semi-transparent squares) ===
     auto createPlaneGizmo = [&](double r, double g, double b, const char* plane) {
         vtkSmartPointer<vtkPlaneSource> planeSource = vtkSmartPointer<vtkPlaneSource>::New();
         planeSource->SetXResolution(1);
         planeSource->SetYResolution(1);
         
+        // Position at corner between two axes
         if (strcmp(plane, "XY") == 0) {
-            planeSource->SetOrigin(5, 5, 0);
-            planeSource->SetPoint1(planeSize, 5, 0);
-            planeSource->SetPoint2(5, planeSize, 0);
+            planeSource->SetOrigin(0.15, 0.15, 0);
+            planeSource->SetPoint1(0.4, 0.15, 0);
+            planeSource->SetPoint2(0.15, 0.4, 0);
         } else if (strcmp(plane, "XZ") == 0) {
-            planeSource->SetOrigin(5, 0, 5);
-            planeSource->SetPoint1(planeSize, 0, 5);
-            planeSource->SetPoint2(5, 0, planeSize);
+            planeSource->SetOrigin(0.15, 0, 0.15);
+            planeSource->SetPoint1(0.4, 0, 0.15);
+            planeSource->SetPoint2(0.15, 0, 0.4);
         } else { // YZ
-            planeSource->SetOrigin(0, 5, 5);
-            planeSource->SetPoint1(0, planeSize, 5);
-            planeSource->SetPoint2(0, 5, planeSize);
+            planeSource->SetOrigin(0, 0.15, 0.15);
+            planeSource->SetPoint1(0, 0.4, 0.15);
+            planeSource->SetPoint2(0, 0.15, 0.4);
         }
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -1649,82 +1697,115 @@ void Viewport3D::createGizmos() {
         vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
         actor->GetProperty()->SetColor(r, g, b);
-        actor->GetProperty()->SetOpacity(0.4);
+        actor->GetProperty()->SetOpacity(0.35);
+        actor->GetProperty()->SetAmbient(0.5);
         actor->SetPickable(true);
         return actor;
     };
     
-    gizmoXYPlane_ = createPlaneGizmo(0.2, 0.4, 1.0, "XY"); // Blue - XY plane
-    gizmoXZPlane_ = createPlaneGizmo(0.2, 1.0, 0.2, "XZ"); // Green - XZ plane
-    gizmoYZPlane_ = createPlaneGizmo(1.0, 0.2, 0.2, "YZ"); // Red - YZ plane
+    gizmoXYPlane_ = createPlaneGizmo(0.5, 0.5, 0.9, "XY"); // Blue-ish
+    gizmoXZPlane_ = createPlaneGizmo(0.5, 0.8, 0.5, "XZ"); // Green-ish
+    gizmoYZPlane_ = createPlaneGizmo(0.9, 0.5, 0.5, "YZ"); // Red-ish
     
-    // === Create rotation rings ===
+    // === Create modern rotation rings (torus) ===
     auto createRing = [&](double r, double g, double b, const char* axis) {
-        vtkSmartPointer<vtkDiskSource> disk = vtkSmartPointer<vtkDiskSource>::New();
-        disk->SetInnerRadius(25);
-        disk->SetOuterRadius(28);
-        disk->SetRadialResolution(1);
-        disk->SetCircumferentialResolution(64);
+        // Use regular polygon to create ring appearance
+        vtkSmartPointer<vtkRegularPolygonSource> ring = vtkSmartPointer<vtkRegularPolygonSource>::New();
+        ring->SetNumberOfSides(64);
+        ring->SetRadius(1.0);
+        ring->SetCenter(0, 0, 0);
+        ring->GeneratePolygonOff();  // Creates a polyline, not filled
+        ring->Update();
+        
+        // Create a tube around the polyline for 3D appearance
+        vtkSmartPointer<vtkTubeFilter> tubeFilter = vtkSmartPointer<vtkTubeFilter>::New();
+        tubeFilter->SetInputConnection(ring->GetOutputPort());
+        tubeFilter->SetRadius(0.04);
+        tubeFilter->SetNumberOfSides(16);
+        tubeFilter->Update();
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputConnection(disk->GetOutputPort());
+        mapper->SetInputConnection(tubeFilter->GetOutputPort());
         
         vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
         actor->GetProperty()->SetColor(r, g, b);
-        actor->GetProperty()->SetOpacity(0.8);
-        actor->GetProperty()->SetLineWidth(3);
+        actor->GetProperty()->SetAmbient(0.4);
+        actor->GetProperty()->SetDiffuse(0.7);
+        actor->GetProperty()->SetSpecular(0.3);
         
         // Orient ring perpendicular to axis
         if (strcmp(axis, "X") == 0) {
-            actor->RotateY(90);
+            actor->RotateY(90);  // Ring around X axis
         } else if (strcmp(axis, "Y") == 0) {
-            actor->RotateX(90);
+            actor->RotateX(90);  // Ring around Y axis
         }
-        // Z axis ring needs no rotation
+        // Z axis ring - no rotation
         
         actor->SetPickable(true);
         return actor;
     };
     
-    gizmoRotateX_ = createRing(1.0, 0.2, 0.2, "X");
-    gizmoRotateY_ = createRing(0.2, 1.0, 0.2, "Y");
-    gizmoRotateZ_ = createRing(0.2, 0.4, 1.0, "Z");
+    gizmoRotateX_ = createRing(0.9, 0.2, 0.2, "X");
+    gizmoRotateY_ = createRing(0.4, 0.85, 0.2, "Y");
+    gizmoRotateZ_ = createRing(0.2, 0.5, 0.95, "Z");
     
-    // === Create scale boxes ===
-    auto createScaleBox = [&](double r, double g, double b, double x, double y, double z) {
+    // === Create scale handles (rounded cubes at end of lines) ===
+    auto createScaleHandle = [&](double r, double g, double b, double x, double y, double z) {
+        vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
+        
+        // Line from center to handle
+        vtkSmartPointer<vtkLineSource> line = vtkSmartPointer<vtkLineSource>::New();
+        line->SetPoint1(0, 0, 0);
+        line->SetPoint2(x * 0.8, y * 0.8, z * 0.8);
+        
+        vtkSmartPointer<vtkTubeFilter> lineTube = vtkSmartPointer<vtkTubeFilter>::New();
+        lineTube->SetInputConnection(line->GetOutputPort());
+        lineTube->SetRadius(0.02);
+        lineTube->SetNumberOfSides(12);
+        lineTube->Update();
+        
+        // Cube at end
         vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
-        cube->SetXLength(6);
-        cube->SetYLength(6);
-        cube->SetZLength(6);
-        cube->SetCenter(x * 35, y * 35, z * 35);
+        cube->SetXLength(0.12);
+        cube->SetYLength(0.12);
+        cube->SetZLength(0.12);
+        cube->SetCenter(x * 0.9, y * 0.9, z * 0.9);
+        cube->Update();
+        
+        appendFilter->AddInputData(lineTube->GetOutput());
+        appendFilter->AddInputData(cube->GetOutput());
+        appendFilter->Update();
         
         vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputConnection(cube->GetOutputPort());
+        mapper->SetInputConnection(appendFilter->GetOutputPort());
         
         vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
         actor->GetProperty()->SetColor(r, g, b);
+        actor->GetProperty()->SetAmbient(0.4);
+        actor->GetProperty()->SetDiffuse(0.7);
+        actor->GetProperty()->SetSpecular(0.3);
         actor->SetPickable(true);
         return actor;
     };
     
-    gizmoScaleX_ = createScaleBox(1.0, 0.2, 0.2, 1, 0, 0);
-    gizmoScaleY_ = createScaleBox(0.2, 1.0, 0.2, 0, 1, 0);
-    gizmoScaleZ_ = createScaleBox(0.2, 0.4, 1.0, 0, 0, 1);
+    gizmoScaleX_ = createScaleHandle(0.9, 0.2, 0.2, 1, 0, 0);
+    gizmoScaleY_ = createScaleHandle(0.4, 0.85, 0.2, 0, 1, 0);
+    gizmoScaleZ_ = createScaleHandle(0.2, 0.5, 0.95, 0, 0, 1);
     
     // Create transform info text overlay
     transformInfoActor_ = vtkSmartPointer<vtkTextActor>::New();
     transformInfoActor_->SetInput("");
-    transformInfoActor_->SetPosition(10, 40);  // Bottom-left corner
-    transformInfoActor_->GetTextProperty()->SetFontSize(18);
-    transformInfoActor_->GetTextProperty()->SetColor(1.0, 1.0, 0.3); // Yellow text
-    transformInfoActor_->GetTextProperty()->SetFontFamilyToCourier();
+    transformInfoActor_->SetPosition(10, 40);
+    transformInfoActor_->GetTextProperty()->SetFontSize(16);
+    transformInfoActor_->GetTextProperty()->SetColor(1.0, 1.0, 1.0);
+    transformInfoActor_->GetTextProperty()->SetFontFamilyToArial();
     transformInfoActor_->GetTextProperty()->SetBold(true);
     transformInfoActor_->GetTextProperty()->SetShadow(true);
-    transformInfoActor_->GetTextProperty()->SetBackgroundOpacity(0.5);
-    transformInfoActor_->GetTextProperty()->SetBackgroundColor(0.1, 0.1, 0.1);
-    transformInfoActor_->VisibilityOff();  // Hidden initially
+    transformInfoActor_->GetTextProperty()->SetBackgroundOpacity(0.7);
+    transformInfoActor_->GetTextProperty()->SetBackgroundColor(0.15, 0.15, 0.15);
+    transformInfoActor_->VisibilityOff();
     renderer_->AddActor2D(transformInfoActor_);
     
     // Initially hide all gizmos
@@ -1753,27 +1834,29 @@ void Viewport3D::updateGizmoPosition() {
         switch (shape->getType()) {
             case ShapeType::Box:
                 if (auto* p = shape->getParamsAs<BoxParams>()) {
-                    objectRadius = std::max({p->x, p->y, p->z}) * 0.5 + 10.0;
+                    objectRadius = std::sqrt(p->x*p->x + p->y*p->y + p->z*p->z) * 0.5 + 5.0;
                 }
                 break;
             case ShapeType::Sphere:
                 if (auto* p = shape->getParamsAs<SphereParams>()) {
-                    objectRadius = p->rmax + 10.0;
+                    objectRadius = p->rmax + 5.0;
                 }
                 break;
             case ShapeType::Tube:
                 if (auto* p = shape->getParamsAs<TubeParams>()) {
-                    objectRadius = std::max(p->rmax, p->dz) + 10.0;
+                    objectRadius = std::sqrt(p->rmax*p->rmax + p->dz*p->dz) + 5.0;
                 }
                 break;
             case ShapeType::Cone:
                 if (auto* p = shape->getParamsAs<ConeParams>()) {
-                    objectRadius = std::max(std::max(p->rmax1, p->rmax2), p->dz) + 10.0;
+                    double maxR = std::max(p->rmax1, p->rmax2);
+                    objectRadius = std::sqrt(maxR*maxR + p->dz*p->dz) + 5.0;
                 }
                 break;
             case ShapeType::Trd:
                 if (auto* p = shape->getParamsAs<TrdParams>()) {
-                    objectRadius = std::max({p->dx1, p->dx2, p->dy1, p->dy2, p->dz}) + 10.0;
+                    double maxD = std::max({p->dx1, p->dx2, p->dy1, p->dy2, p->dz});
+                    objectRadius = maxD * 1.2 + 5.0;
                 }
                 break;
             default:
@@ -1781,13 +1864,23 @@ void Viewport3D::updateGizmoPosition() {
         }
     }
     
-    // Gizmo scale based on object size (minimum 40, scale with object)
-    double gizmoScale = std::max(40.0, objectRadius * 1.2);
+    // SCREEN-SPACE CONSTANT SIZE: Scale gizmos based on camera distance
+    // This makes gizmos appear the same size on screen regardless of zoom level
+    vtkCamera* camera = renderer_->GetActiveCamera();
+    double cameraDistance = camera->GetDistance();
     
-    // Position all gizmo actors at object position
-    auto positionActor = [&](vtkSmartPointer<vtkActor>& actor) {
+    // Base scale that looks good at typical viewing distance
+    // Adjust so gizmos take up about 15% of screen at center
+    double screenScale = cameraDistance * 0.15;  // Proportional to camera distance
+    
+    // Also factor in object size - gizmos should extend beyond object
+    double gizmoScale = std::max(screenScale, objectRadius * 1.5);
+    
+    // Position and scale all gizmo actors
+    auto positionAndScaleActor = [&](vtkSmartPointer<vtkActor>& actor) {
         if (actor) {
             actor->SetPosition(pos.x(), pos.y(), pos.z());
+            actor->SetScale(gizmoScale, gizmoScale, gizmoScale);
         }
     };
     
@@ -1795,12 +1888,12 @@ void Viewport3D::updateGizmoPosition() {
     showGizmo(false); // Hide all first
     
     if (interactionMode_ == InteractionMode::Move) {
-        positionActor(gizmoXArrow_);
-        positionActor(gizmoYArrow_);
-        positionActor(gizmoZArrow_);
-        positionActor(gizmoXYPlane_);
-        positionActor(gizmoXZPlane_);
-        positionActor(gizmoYZPlane_);
+        positionAndScaleActor(gizmoXArrow_);
+        positionAndScaleActor(gizmoYArrow_);
+        positionAndScaleActor(gizmoZArrow_);
+        positionAndScaleActor(gizmoXYPlane_);
+        positionAndScaleActor(gizmoXZPlane_);
+        positionAndScaleActor(gizmoYZPlane_);
         
         if (gizmoXArrow_) { renderer_->AddActor(gizmoXArrow_); gizmoXArrow_->VisibilityOn(); }
         if (gizmoYArrow_) { renderer_->AddActor(gizmoYArrow_); gizmoYArrow_->VisibilityOn(); }
@@ -1810,30 +1903,40 @@ void Viewport3D::updateGizmoPosition() {
         if (gizmoYZPlane_) { renderer_->AddActor(gizmoYZPlane_); gizmoYZPlane_->VisibilityOn(); }
         
         // Highlight active constraint
-        if (gizmoXArrow_) gizmoXArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisX ? 1.0 : 0.6);
-        if (gizmoYArrow_) gizmoYArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisY ? 1.0 : 0.6);
-        if (gizmoZArrow_) gizmoZArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisZ ? 1.0 : 0.6);
-        if (gizmoXYPlane_) gizmoXYPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::XY ? 0.6 : 0.3);
-        if (gizmoXZPlane_) gizmoXZPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::XZ ? 0.6 : 0.3);
-        if (gizmoYZPlane_) gizmoYZPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::YZ ? 0.6 : 0.3);
+        if (gizmoXArrow_) gizmoXArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisX ? 1.0 : 0.7);
+        if (gizmoYArrow_) gizmoYArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisY ? 1.0 : 0.7);
+        if (gizmoZArrow_) gizmoZArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisZ ? 1.0 : 0.7);
+        if (gizmoXYPlane_) gizmoXYPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::XY ? 0.6 : 0.35);
+        if (gizmoXZPlane_) gizmoXZPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::XZ ? 0.6 : 0.35);
+        if (gizmoYZPlane_) gizmoYZPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::YZ ? 0.6 : 0.35);
     }
     else if (interactionMode_ == InteractionMode::Rotate) {
-        positionActor(gizmoRotateX_);
-        positionActor(gizmoRotateY_);
-        positionActor(gizmoRotateZ_);
+        positionAndScaleActor(gizmoRotateX_);
+        positionAndScaleActor(gizmoRotateY_);
+        positionAndScaleActor(gizmoRotateZ_);
         
         if (gizmoRotateX_) { renderer_->AddActor(gizmoRotateX_); gizmoRotateX_->VisibilityOn(); }
         if (gizmoRotateY_) { renderer_->AddActor(gizmoRotateY_); gizmoRotateY_->VisibilityOn(); }
         if (gizmoRotateZ_) { renderer_->AddActor(gizmoRotateZ_); gizmoRotateZ_->VisibilityOn(); }
+        
+        // Highlight active axis
+        if (gizmoRotateX_) gizmoRotateX_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisX ? 1.0 : 0.7);
+        if (gizmoRotateY_) gizmoRotateY_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisY ? 1.0 : 0.7);
+        if (gizmoRotateZ_) gizmoRotateZ_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisZ ? 1.0 : 0.7);
     }
     else if (interactionMode_ == InteractionMode::Scale) {
-        positionActor(gizmoScaleX_);
-        positionActor(gizmoScaleY_);
-        positionActor(gizmoScaleZ_);
+        positionAndScaleActor(gizmoScaleX_);
+        positionAndScaleActor(gizmoScaleY_);
+        positionAndScaleActor(gizmoScaleZ_);
         
         if (gizmoScaleX_) { renderer_->AddActor(gizmoScaleX_); gizmoScaleX_->VisibilityOn(); }
         if (gizmoScaleY_) { renderer_->AddActor(gizmoScaleY_); gizmoScaleY_->VisibilityOn(); }
         if (gizmoScaleZ_) { renderer_->AddActor(gizmoScaleZ_); gizmoScaleZ_->VisibilityOn(); }
+        
+        // Highlight active axis
+        if (gizmoScaleX_) gizmoScaleX_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisX ? 1.0 : 0.7);
+        if (gizmoScaleY_) gizmoScaleY_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisY ? 1.0 : 0.7);
+        if (gizmoScaleZ_) gizmoScaleZ_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisZ ? 1.0 : 0.7);
     }
 }
 
@@ -1861,6 +1964,47 @@ void Viewport3D::showGizmo(bool show) {
     setVisibility(gizmoScaleX_);
     setVisibility(gizmoScaleY_);
     setVisibility(gizmoScaleZ_);
+}
+
+void Viewport3D::updateGizmoHighlight(int hoveredAxis) {
+    // Brighten the hovered gizmo axis for visual feedback
+    auto setHighlight = [&](vtkSmartPointer<vtkActor>& actor, bool highlighted, double r, double g, double b) {
+        if (!actor) return;
+        if (highlighted) {
+            // Brighten color on hover
+            actor->GetProperty()->SetColor(std::min(1.0, r * 1.3), std::min(1.0, g * 1.3), std::min(1.0, b * 1.3));
+            actor->GetProperty()->SetOpacity(1.0);
+            actor->GetProperty()->SetLineWidth(3);
+        } else {
+            // Normal color
+            actor->GetProperty()->SetColor(r, g, b);
+            actor->GetProperty()->SetOpacity(0.7);
+            actor->GetProperty()->SetLineWidth(1);
+        }
+    };
+    
+    // Colors: X=Red, Y=Green, Z=Blue
+    if (interactionMode_ == InteractionMode::Move) {
+        setHighlight(gizmoXArrow_, hoveredAxis == 0, 0.9, 0.2, 0.2);
+        setHighlight(gizmoYArrow_, hoveredAxis == 1, 0.4, 0.85, 0.2);
+        setHighlight(gizmoZArrow_, hoveredAxis == 2, 0.2, 0.5, 0.95);
+        // Planes
+        if (gizmoXYPlane_) gizmoXYPlane_->GetProperty()->SetOpacity(hoveredAxis == 3 ? 0.6 : 0.35);
+        if (gizmoXZPlane_) gizmoXZPlane_->GetProperty()->SetOpacity(hoveredAxis == 4 ? 0.6 : 0.35);
+        if (gizmoYZPlane_) gizmoYZPlane_->GetProperty()->SetOpacity(hoveredAxis == 5 ? 0.6 : 0.35);
+    }
+    else if (interactionMode_ == InteractionMode::Rotate) {
+        setHighlight(gizmoRotateX_, hoveredAxis == 0, 0.9, 0.2, 0.2);
+        setHighlight(gizmoRotateY_, hoveredAxis == 1, 0.4, 0.85, 0.2);
+        setHighlight(gizmoRotateZ_, hoveredAxis == 2, 0.2, 0.5, 0.95);
+    }
+    else if (interactionMode_ == InteractionMode::Scale) {
+        setHighlight(gizmoScaleX_, hoveredAxis == 0, 0.9, 0.2, 0.2);
+        setHighlight(gizmoScaleY_, hoveredAxis == 1, 0.4, 0.85, 0.2);
+        setHighlight(gizmoScaleZ_, hoveredAxis == 2, 0.2, 0.5, 0.95);
+    }
+    
+    if (renderWindow_) renderWindow_->Render();
 }
 
 void Viewport3D::updateTransformTextOverlay(const QString& text) {

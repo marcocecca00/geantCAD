@@ -1018,8 +1018,8 @@ void MainWindow::onViewFront() {
     viewport_->setStandardView(Viewport3D::StandardView::Front);
     if (viewCube_) viewCube_->updateFromCamera();
     statusBar_->showMessage("Front view", 1000);
-}
-
+    }
+    
 void MainWindow::onViewBack() {
     viewport_->setStandardView(Viewport3D::StandardView::Back);
     if (viewCube_) viewCube_->updateFromCamera();
@@ -1063,9 +1063,9 @@ void MainWindow::onToggleClippingPlanes() {
         bool visible = !clippingDock_->isVisible();
         clippingDock_->setVisible(visible);
         statusBar_->showMessage(visible ? "Clipping planes enabled" : "Clipping planes disabled", 1000);
+        }
     }
-}
-
+    
 void MainWindow::onToggleMeasureTool() {
     if (measureDock_) {
         bool visible = !measureDock_->isVisible();
@@ -1161,7 +1161,7 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
     // Keep ViewCube positioned in top-right corner of viewport
     if ((obj == viewport_->parent() || obj == viewport_) && event->type() == QEvent::Resize) {
         updateViewCubePosition();
-    }
+            }
     
     return QMainWindow::eventFilter(obj, event);
 }
