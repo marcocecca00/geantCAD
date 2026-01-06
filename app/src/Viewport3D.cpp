@@ -42,6 +42,10 @@
 #include <vtkCellArray.h>
 #include <vtkLine.h>
 #include <vtkCommand.h>
+#include <vtkArrowSource.h>
+#include <vtkDiskSource.h>
+#include <vtkTubeFilter.h>
+#include <vtkRegularPolygonSource.h>
 #include <QMenu>
 #include <QContextMenuEvent>
 #include "../../core/include/Command.hh"
@@ -97,6 +101,9 @@ void Viewport3D::setupRenderer() {
     
     // Create modern grid
     createGrid();
+    
+    // Create manipulation gizmos
+    createGizmos();
     
     // Set up camera with better initial position
     vtkCamera* camera = renderer_->GetActiveCamera();
@@ -691,7 +698,34 @@ void Viewport3D::setCommandStack(CommandStack* commandStack) {
 
 void Viewport3D::setInteractionMode(InteractionMode mode) {
     interactionMode_ = mode;
-    // Mode change doesn't require special handling now - selection is always enabled
+#ifndef GEANTCAD_NO_VTK
+    // Show/hide gizmos based on mode
+    updateGizmoPosition();
+    if (renderWindow_) renderWindow_->Render();
+#endif
+}
+
+void Viewport3D::setConstraintPlane(ConstraintPlane plane) {
+    constraintPlane_ = plane;
+#ifndef GEANTCAD_NO_VTK
+    updateGizmoPosition();
+    if (renderWindow_) renderWindow_->Render();
+#endif
+}
+
+void Viewport3D::setProjectionMode(ProjectionMode mode) {
+    projectionMode_ = mode;
+#ifndef GEANTCAD_NO_VTK
+    if (renderer_ && renderer_->GetActiveCamera()) {
+        vtkCamera* camera = renderer_->GetActiveCamera();
+        if (mode == ProjectionMode::Orthographic) {
+            camera->ParallelProjectionOn();
+        } else {
+            camera->ParallelProjectionOff();
+        }
+        if (renderWindow_) renderWindow_->Render();
+    }
+#endif
 }
 
 void Viewport3D::keyPressEvent(QKeyEvent* event) {
@@ -729,6 +763,42 @@ void Viewport3D::keyPressEvent(QKeyEvent* event) {
             break;
         case Qt::Key_T:
             setInteractionMode(InteractionMode::Scale);
+            emit viewChanged();
+            break;
+        case Qt::Key_X:
+            // Constrain to X axis or YZ plane
+            if (event->modifiers() & Qt::ShiftModifier) {
+                setConstraintPlane(ConstraintPlane::YZ);
+            } else {
+                setConstraintPlane(ConstraintPlane::AxisX);
+            }
+            emit viewChanged();
+            break;
+        case Qt::Key_Y:
+            // Constrain to Y axis or XZ plane
+            if (event->modifiers() & Qt::ShiftModifier) {
+                setConstraintPlane(ConstraintPlane::XZ);
+            } else {
+                setConstraintPlane(ConstraintPlane::AxisY);
+            }
+            emit viewChanged();
+            break;
+        case Qt::Key_Z:
+            // Constrain to Z axis or XY plane
+            if (event->modifiers() & Qt::ShiftModifier) {
+                setConstraintPlane(ConstraintPlane::XY);
+            } else {
+                setConstraintPlane(ConstraintPlane::AxisZ);
+            }
+            emit viewChanged();
+            break;
+        case Qt::Key_5:
+            // Toggle perspective/orthographic (like Blender)
+            if (projectionMode_ == ProjectionMode::Perspective) {
+                setProjectionMode(ProjectionMode::Orthographic);
+            } else {
+                setProjectionMode(ProjectionMode::Perspective);
+            }
             emit viewChanged();
             break;
         case Qt::Key_F:
@@ -840,15 +910,41 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
     // Store mouse position for drag detection
     if (event->button() == Qt::LeftButton) {
         lastPickPos_ = event->pos();
+        int x = event->pos().x();
+        int y = event->pos().y();
         
-        // Check if we should start manipulation
-        if (interactionMode_ == InteractionMode::Move && sceneGraph_) {
+        // Check if we clicked on a gizmo
+        if (interactionMode_ != InteractionMode::Select && sceneGraph_) {
+            int gizmoAxis = pickGizmoAxis(x, y);
+            if (gizmoAxis >= 0) {
+                activeGizmoAxis_ = gizmoAxis;
+                
+                // Set constraint based on clicked gizmo part
+                if (gizmoAxis == 0) setConstraintPlane(ConstraintPlane::AxisX);
+                else if (gizmoAxis == 1) setConstraintPlane(ConstraintPlane::AxisY);
+                else if (gizmoAxis == 2) setConstraintPlane(ConstraintPlane::AxisZ);
+                else if (gizmoAxis == 3) setConstraintPlane(ConstraintPlane::XY);
+                else if (gizmoAxis == 4) setConstraintPlane(ConstraintPlane::XZ);
+                else if (gizmoAxis == 5) setConstraintPlane(ConstraintPlane::YZ);
+                
+                // Start manipulation
+                VolumeNode* selected = sceneGraph_->getSelected();
+                if (selected && selected != sceneGraph_->getRoot()) {
+                    isDragging_ = true;
+                    draggedNode_ = selected;
+                    dragStartTransform_ = selected->getTransform();
+                    dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
+                    return;
+                }
+            }
+        }
+        
+        // Check if we should start manipulation (click on object)
+        if ((interactionMode_ == InteractionMode::Move || 
+             interactionMode_ == InteractionMode::Rotate ||
+             interactionMode_ == InteractionMode::Scale) && sceneGraph_) {
             VolumeNode* selected = sceneGraph_->getSelected();
             if (selected && selected != sceneGraph_->getRoot()) {
-                // Check if we clicked on the selected object
-                int x = event->pos().x();
-                int y = event->pos().y();
-                
                 vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
                 picker->Pick(x, renderWindow_->GetSize()[1] - y - 1, 0, renderer_);
                 
@@ -869,12 +965,7 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
                     isDragging_ = true;
                     draggedNode_ = selected;
                     dragStartTransform_ = selected->getTransform();
-                    
-                    // Get world position at object center for depth reference
-                    double depth = getDepthAtPosition(x, y);
-                    dragStartWorldPos_ = screenToWorld(x, y, depth);
-                    
-                    // Don't pass to VTK (we handle the drag ourselves)
+                    dragStartWorldPos_ = screenToWorld(x, y, getDepthAtPosition(x, y));
                     return;
                 }
             }
@@ -889,38 +980,215 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
 
 void Viewport3D::mouseMoveEvent(QMouseEvent* event) {
 #ifndef GEANTCAD_NO_VTK
-    if (isDragging_ && draggedNode_ && interactionMode_ == InteractionMode::Move) {
+    if (isDragging_ && draggedNode_) {
         int x = event->pos().x();
         int y = event->pos().y();
         
-        // Calculate new world position at same depth
-        double depth = getDepthAtPosition(lastPickPos_.x(), lastPickPos_.y());
-        QVector3D currentWorldPos = screenToWorld(x, y, depth);
-        
-        // Calculate delta movement in world coordinates
-        QVector3D delta = currentWorldPos - dragStartWorldPos_;
-        
-        // Apply delta to original position
-        QVector3D originalPos = dragStartTransform_.getTranslation();
-        QVector3D newPos = originalPos + delta;
-        
-        // Snap to grid if enabled
-        if (snapToGrid_ && gridSpacing_ > 0) {
-            newPos.setX(std::round(newPos.x() / gridSpacing_) * gridSpacing_);
-            newPos.setY(std::round(newPos.y() / gridSpacing_) * gridSpacing_);
-            newPos.setZ(std::round(newPos.z() / gridSpacing_) * gridSpacing_);
+        if (interactionMode_ == InteractionMode::Move) {
+            // Get the plane point (current object position)
+            QVector3D planePoint = dragStartTransform_.getTranslation();
+            
+            // Calculate ray from screen position
+            double depth = 0.5; // Use middle depth for ray casting
+            QVector3D rayStart = screenToWorld(x, y, 0.0);
+            QVector3D rayEnd = screenToWorld(x, y, 1.0);
+            QVector3D rayDir = (rayEnd - rayStart).normalized();
+            
+            QVector3D newPos = planePoint;
+            
+            // Project movement to constraint plane
+            switch (constraintPlane_) {
+                case ConstraintPlane::XY: {
+                    // Intersect ray with Z = planePoint.z()
+                    if (std::abs(rayDir.z()) > 0.0001) {
+                        double t = (planePoint.z() - rayStart.z()) / rayDir.z();
+                        newPos = rayStart + t * rayDir;
+                        newPos.setZ(planePoint.z()); // Keep Z fixed
+                    }
+                    break;
+                }
+                case ConstraintPlane::XZ: {
+                    // Intersect ray with Y = planePoint.y()
+                    if (std::abs(rayDir.y()) > 0.0001) {
+                        double t = (planePoint.y() - rayStart.y()) / rayDir.y();
+                        newPos = rayStart + t * rayDir;
+                        newPos.setY(planePoint.y()); // Keep Y fixed
+                    }
+                    break;
+                }
+                case ConstraintPlane::YZ: {
+                    // Intersect ray with X = planePoint.x()
+                    if (std::abs(rayDir.x()) > 0.0001) {
+                        double t = (planePoint.x() - rayStart.x()) / rayDir.x();
+                        newPos = rayStart + t * rayDir;
+                        newPos.setX(planePoint.x()); // Keep X fixed
+                    }
+                    break;
+                }
+                case ConstraintPlane::AxisX: {
+                    // Move only along X axis (project to X line)
+                    QVector3D startPos = dragStartTransform_.getTranslation();
+                    // Simple projection: use screen X movement
+                    double screenDelta = (x - lastPickPos_.x()) * 0.5; // Scale factor
+                    newPos = startPos;
+                    newPos.setX(startPos.x() + screenDelta);
+                    break;
+                }
+                case ConstraintPlane::AxisY: {
+                    QVector3D startPos = dragStartTransform_.getTranslation();
+                    double screenDelta = (x - lastPickPos_.x()) * 0.5;
+                    newPos = startPos;
+                    newPos.setY(startPos.y() + screenDelta);
+                    break;
+                }
+                case ConstraintPlane::AxisZ: {
+                    QVector3D startPos = dragStartTransform_.getTranslation();
+                    double screenDelta = -(y - lastPickPos_.y()) * 0.5; // Invert Y
+                    newPos = startPos;
+                    newPos.setZ(startPos.z() + screenDelta);
+                    break;
+                }
+                default: {
+                    // Free movement - use original logic
+                    double depth = getDepthAtPosition(lastPickPos_.x(), lastPickPos_.y());
+                    QVector3D currentWorldPos = screenToWorld(x, y, depth);
+                    QVector3D delta = currentWorldPos - dragStartWorldPos_;
+                    newPos = dragStartTransform_.getTranslation() + delta;
+                    break;
+                }
+            }
+            
+            // Snap to grid if enabled
+            if (snapToGrid_ && gridSpacing_ > 0) {
+                newPos.setX(std::round(newPos.x() / gridSpacing_) * gridSpacing_);
+                newPos.setY(std::round(newPos.y() / gridSpacing_) * gridSpacing_);
+                newPos.setZ(std::round(newPos.z() / gridSpacing_) * gridSpacing_);
+            }
+            
+            // Update transform
+            Transform newTransform = dragStartTransform_;
+            newTransform.setTranslation(newPos);
+            draggedNode_->getTransform() = newTransform;
+            
+            // Update gizmo position
+            updateGizmoPosition();
+            refresh();
+            return;
         }
-        
-        // Update transform directly (we'll commit with undo on release)
-        Transform newTransform = dragStartTransform_;
-        newTransform.setTranslation(newPos);
-        draggedNode_->getTransform() = newTransform;
-        
-        // Update viewport
-        refresh();
-        
-        // Don't pass to VTK
-        return;
+        else if (interactionMode_ == InteractionMode::Rotate) {
+            // Calculate rotation from mouse movement
+            double deltaX = (x - lastPickPos_.x()) * 0.5; // Degrees per pixel
+            double deltaY = (y - lastPickPos_.y()) * 0.5;
+            
+            Transform newTransform = dragStartTransform_;
+            QQuaternion rotation = dragStartTransform_.getRotation();
+            
+            switch (constraintPlane_) {
+                case ConstraintPlane::AxisX:
+                case ConstraintPlane::YZ:
+                    // Rotate around X axis
+                    rotation = QQuaternion::fromAxisAndAngle(1, 0, 0, deltaY) * rotation;
+                    break;
+                case ConstraintPlane::AxisY:
+                case ConstraintPlane::XZ:
+                    // Rotate around Y axis
+                    rotation = QQuaternion::fromAxisAndAngle(0, 1, 0, deltaX) * rotation;
+                    break;
+                case ConstraintPlane::AxisZ:
+                case ConstraintPlane::XY:
+                default:
+                    // Rotate around Z axis
+                    rotation = QQuaternion::fromAxisAndAngle(0, 0, 1, deltaX) * rotation;
+                    break;
+            }
+            
+            newTransform.setRotation(rotation);
+            draggedNode_->getTransform() = newTransform;
+            
+            refresh();
+            return;
+        }
+        else if (interactionMode_ == InteractionMode::Scale) {
+            // Calculate scale from mouse movement
+            double deltaX = (x - lastPickPos_.x()) * 0.005; // Small increments
+            double deltaY = (y - lastPickPos_.y()) * 0.005;
+            double scaleDelta = deltaX - deltaY; // Combined movement
+            
+            // For shapes, we modify the shape parameters based on type
+            // This is more Geant4-like (shape dimensions matter, not transform scale)
+            if (draggedNode_->getShape()) {
+                Shape* shape = draggedNode_->getShape();
+                ShapeType type = shape->getType();
+                
+                // Scale based on shape type and constraint
+                switch (type) {
+                    case ShapeType::Box: {
+                        if (auto* p = shape->getParamsAs<BoxParams>()) {
+                            if (constraintPlane_ == ConstraintPlane::AxisX || constraintPlane_ == ConstraintPlane::None)
+                                p->x = std::max(0.1, p->x * (1.0 + scaleDelta));
+                            if (constraintPlane_ == ConstraintPlane::AxisY || constraintPlane_ == ConstraintPlane::None)
+                                p->y = std::max(0.1, p->y * (1.0 + scaleDelta));
+                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                                p->z = std::max(0.1, p->z * (1.0 + scaleDelta));
+                        }
+                        break;
+                    }
+                    case ShapeType::Tube: {
+                        if (auto* p = shape->getParamsAs<TubeParams>()) {
+                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                                p->dz = std::max(0.1, p->dz * (1.0 + scaleDelta));
+                            if (constraintPlane_ != ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None) {
+                                p->rmax = std::max(0.1, p->rmax * (1.0 + scaleDelta));
+                                p->rmin = std::max(0.0, p->rmin * (1.0 + scaleDelta));
+                            }
+                        }
+                        break;
+                    }
+                    case ShapeType::Sphere: {
+                        if (auto* p = shape->getParamsAs<SphereParams>()) {
+                            p->rmax = std::max(0.1, p->rmax * (1.0 + scaleDelta));
+                            p->rmin = std::max(0.0, p->rmin * (1.0 + scaleDelta));
+                        }
+                        break;
+                    }
+                    case ShapeType::Cone: {
+                        if (auto* p = shape->getParamsAs<ConeParams>()) {
+                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                                p->dz = std::max(0.1, p->dz * (1.0 + scaleDelta));
+                            if (constraintPlane_ != ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None) {
+                                p->rmax1 = std::max(0.1, p->rmax1 * (1.0 + scaleDelta));
+                                p->rmax2 = std::max(0.0, p->rmax2 * (1.0 + scaleDelta));
+                            }
+                        }
+                        break;
+                    }
+                    case ShapeType::Trd: {
+                        if (auto* p = shape->getParamsAs<TrdParams>()) {
+                            if (constraintPlane_ == ConstraintPlane::AxisX || constraintPlane_ == ConstraintPlane::None) {
+                                p->dx1 = std::max(0.1, p->dx1 * (1.0 + scaleDelta));
+                                p->dx2 = std::max(0.1, p->dx2 * (1.0 + scaleDelta));
+                            }
+                            if (constraintPlane_ == ConstraintPlane::AxisY || constraintPlane_ == ConstraintPlane::None) {
+                                p->dy1 = std::max(0.1, p->dy1 * (1.0 + scaleDelta));
+                                p->dy2 = std::max(0.1, p->dy2 * (1.0 + scaleDelta));
+                            }
+                            if (constraintPlane_ == ConstraintPlane::AxisZ || constraintPlane_ == ConstraintPlane::None)
+                                p->dz = std::max(0.1, p->dz * (1.0 + scaleDelta));
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+            
+            // Update for continuous feedback
+            lastPickPos_ = event->pos();
+            
+            refresh();
+            emit objectTransformed(draggedNode_);
+            return;
+        }
     }
     
     QVTKOpenGLNativeWidget::mouseMoveEvent(event);
@@ -1039,6 +1307,8 @@ void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
         }
     }
     
+    // Update gizmo position for new selection
+    updateGizmoPosition();
 }
 
 void Viewport3D::showContextMenu(const QPoint& pos) {
@@ -1146,6 +1416,297 @@ double Viewport3D::getDepthAtPosition(int x, int y) {
     
     // If no pick, use a default depth (center of view)
     return 0.5;
+}
+
+void Viewport3D::createGizmos() {
+    if (!renderer_) return;
+    
+    const double arrowLength = 40.0;
+    const double arrowRadius = 2.0;
+    const double planeSize = 15.0;
+    
+    // === Create arrow gizmos for translation ===
+    auto createArrow = [&](double r, double g, double b, double dirX, double dirY, double dirZ) {
+        vtkSmartPointer<vtkArrowSource> arrow = vtkSmartPointer<vtkArrowSource>::New();
+        arrow->SetTipResolution(16);
+        arrow->SetShaftResolution(16);
+        arrow->SetTipRadius(0.15);
+        arrow->SetTipLength(0.3);
+        arrow->SetShaftRadius(0.05);
+        
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(arrow->GetOutputPort());
+        
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->GetProperty()->SetColor(r, g, b);
+        actor->GetProperty()->SetAmbient(0.5);
+        actor->GetProperty()->SetDiffuse(0.8);
+        actor->SetScale(arrowLength, arrowLength, arrowLength);
+        
+        // Orient arrow along direction
+        if (dirX > 0) {
+            actor->RotateZ(0);   // Default X direction
+        } else if (dirY > 0) {
+            actor->RotateZ(90);  // Y direction
+        } else if (dirZ > 0) {
+            actor->RotateY(-90); // Z direction
+        }
+        
+        actor->SetPickable(true);
+        return actor;
+    };
+    
+    gizmoXArrow_ = createArrow(1.0, 0.2, 0.2, 1, 0, 0); // Red - X
+    gizmoYArrow_ = createArrow(0.2, 1.0, 0.2, 0, 1, 0); // Green - Y
+    gizmoZArrow_ = createArrow(0.2, 0.4, 1.0, 0, 0, 1); // Blue - Z
+    
+    // === Create plane gizmos (small squares) ===
+    auto createPlaneGizmo = [&](double r, double g, double b, const char* plane) {
+        vtkSmartPointer<vtkPlaneSource> planeSource = vtkSmartPointer<vtkPlaneSource>::New();
+        planeSource->SetXResolution(1);
+        planeSource->SetYResolution(1);
+        
+        if (strcmp(plane, "XY") == 0) {
+            planeSource->SetOrigin(5, 5, 0);
+            planeSource->SetPoint1(planeSize, 5, 0);
+            planeSource->SetPoint2(5, planeSize, 0);
+        } else if (strcmp(plane, "XZ") == 0) {
+            planeSource->SetOrigin(5, 0, 5);
+            planeSource->SetPoint1(planeSize, 0, 5);
+            planeSource->SetPoint2(5, 0, planeSize);
+        } else { // YZ
+            planeSource->SetOrigin(0, 5, 5);
+            planeSource->SetPoint1(0, planeSize, 5);
+            planeSource->SetPoint2(0, 5, planeSize);
+        }
+        
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(planeSource->GetOutputPort());
+        
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->GetProperty()->SetColor(r, g, b);
+        actor->GetProperty()->SetOpacity(0.4);
+        actor->SetPickable(true);
+        return actor;
+    };
+    
+    gizmoXYPlane_ = createPlaneGizmo(0.2, 0.4, 1.0, "XY"); // Blue - XY plane
+    gizmoXZPlane_ = createPlaneGizmo(0.2, 1.0, 0.2, "XZ"); // Green - XZ plane
+    gizmoYZPlane_ = createPlaneGizmo(1.0, 0.2, 0.2, "YZ"); // Red - YZ plane
+    
+    // === Create rotation rings ===
+    auto createRing = [&](double r, double g, double b, const char* axis) {
+        vtkSmartPointer<vtkDiskSource> disk = vtkSmartPointer<vtkDiskSource>::New();
+        disk->SetInnerRadius(25);
+        disk->SetOuterRadius(28);
+        disk->SetRadialResolution(1);
+        disk->SetCircumferentialResolution(64);
+        
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(disk->GetOutputPort());
+        
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->GetProperty()->SetColor(r, g, b);
+        actor->GetProperty()->SetOpacity(0.8);
+        actor->GetProperty()->SetLineWidth(3);
+        
+        // Orient ring perpendicular to axis
+        if (strcmp(axis, "X") == 0) {
+            actor->RotateY(90);
+        } else if (strcmp(axis, "Y") == 0) {
+            actor->RotateX(90);
+        }
+        // Z axis ring needs no rotation
+        
+        actor->SetPickable(true);
+        return actor;
+    };
+    
+    gizmoRotateX_ = createRing(1.0, 0.2, 0.2, "X");
+    gizmoRotateY_ = createRing(0.2, 1.0, 0.2, "Y");
+    gizmoRotateZ_ = createRing(0.2, 0.4, 1.0, "Z");
+    
+    // === Create scale boxes ===
+    auto createScaleBox = [&](double r, double g, double b, double x, double y, double z) {
+        vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
+        cube->SetXLength(6);
+        cube->SetYLength(6);
+        cube->SetZLength(6);
+        cube->SetCenter(x * 35, y * 35, z * 35);
+        
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(cube->GetOutputPort());
+        
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->GetProperty()->SetColor(r, g, b);
+        actor->SetPickable(true);
+        return actor;
+    };
+    
+    gizmoScaleX_ = createScaleBox(1.0, 0.2, 0.2, 1, 0, 0);
+    gizmoScaleY_ = createScaleBox(0.2, 1.0, 0.2, 0, 1, 0);
+    gizmoScaleZ_ = createScaleBox(0.2, 0.4, 1.0, 0, 0, 1);
+    
+    // Initially hide all gizmos
+    showGizmo(false);
+}
+
+void Viewport3D::updateGizmoPosition() {
+    if (!sceneGraph_ || !renderer_) return;
+    
+    VolumeNode* selected = sceneGraph_->getSelected();
+    bool hasSelection = selected && selected != sceneGraph_->getRoot();
+    
+    // Hide gizmos if nothing selected or in Select mode
+    if (!hasSelection || interactionMode_ == InteractionMode::Select) {
+        showGizmo(false);
+        return;
+    }
+    
+    // Get object position
+    QVector3D pos = selected->getTransform().getTranslation();
+    
+    // Position all gizmo actors
+    auto positionActor = [&](vtkSmartPointer<vtkActor>& actor) {
+        if (actor) {
+            actor->SetPosition(pos.x(), pos.y(), pos.z());
+        }
+    };
+    
+    // Show appropriate gizmos based on mode
+    showGizmo(false); // Hide all first
+    
+    if (interactionMode_ == InteractionMode::Move) {
+        positionActor(gizmoXArrow_);
+        positionActor(gizmoYArrow_);
+        positionActor(gizmoZArrow_);
+        positionActor(gizmoXYPlane_);
+        positionActor(gizmoXZPlane_);
+        positionActor(gizmoYZPlane_);
+        
+        if (gizmoXArrow_) { renderer_->AddActor(gizmoXArrow_); gizmoXArrow_->VisibilityOn(); }
+        if (gizmoYArrow_) { renderer_->AddActor(gizmoYArrow_); gizmoYArrow_->VisibilityOn(); }
+        if (gizmoZArrow_) { renderer_->AddActor(gizmoZArrow_); gizmoZArrow_->VisibilityOn(); }
+        if (gizmoXYPlane_) { renderer_->AddActor(gizmoXYPlane_); gizmoXYPlane_->VisibilityOn(); }
+        if (gizmoXZPlane_) { renderer_->AddActor(gizmoXZPlane_); gizmoXZPlane_->VisibilityOn(); }
+        if (gizmoYZPlane_) { renderer_->AddActor(gizmoYZPlane_); gizmoYZPlane_->VisibilityOn(); }
+        
+        // Highlight active constraint
+        if (gizmoXArrow_) gizmoXArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisX ? 1.0 : 0.6);
+        if (gizmoYArrow_) gizmoYArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisY ? 1.0 : 0.6);
+        if (gizmoZArrow_) gizmoZArrow_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::AxisZ ? 1.0 : 0.6);
+        if (gizmoXYPlane_) gizmoXYPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::XY ? 0.6 : 0.3);
+        if (gizmoXZPlane_) gizmoXZPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::XZ ? 0.6 : 0.3);
+        if (gizmoYZPlane_) gizmoYZPlane_->GetProperty()->SetOpacity(constraintPlane_ == ConstraintPlane::YZ ? 0.6 : 0.3);
+    }
+    else if (interactionMode_ == InteractionMode::Rotate) {
+        positionActor(gizmoRotateX_);
+        positionActor(gizmoRotateY_);
+        positionActor(gizmoRotateZ_);
+        
+        if (gizmoRotateX_) { renderer_->AddActor(gizmoRotateX_); gizmoRotateX_->VisibilityOn(); }
+        if (gizmoRotateY_) { renderer_->AddActor(gizmoRotateY_); gizmoRotateY_->VisibilityOn(); }
+        if (gizmoRotateZ_) { renderer_->AddActor(gizmoRotateZ_); gizmoRotateZ_->VisibilityOn(); }
+    }
+    else if (interactionMode_ == InteractionMode::Scale) {
+        positionActor(gizmoScaleX_);
+        positionActor(gizmoScaleY_);
+        positionActor(gizmoScaleZ_);
+        
+        if (gizmoScaleX_) { renderer_->AddActor(gizmoScaleX_); gizmoScaleX_->VisibilityOn(); }
+        if (gizmoScaleY_) { renderer_->AddActor(gizmoScaleY_); gizmoScaleY_->VisibilityOn(); }
+        if (gizmoScaleZ_) { renderer_->AddActor(gizmoScaleZ_); gizmoScaleZ_->VisibilityOn(); }
+    }
+}
+
+void Viewport3D::showGizmo(bool show) {
+    auto setVisibility = [&](vtkSmartPointer<vtkActor>& actor) {
+        if (actor) {
+            if (show) {
+                actor->VisibilityOn();
+            } else {
+                actor->VisibilityOff();
+                renderer_->RemoveActor(actor);
+            }
+        }
+    };
+    
+    setVisibility(gizmoXArrow_);
+    setVisibility(gizmoYArrow_);
+    setVisibility(gizmoZArrow_);
+    setVisibility(gizmoXYPlane_);
+    setVisibility(gizmoXZPlane_);
+    setVisibility(gizmoYZPlane_);
+    setVisibility(gizmoRotateX_);
+    setVisibility(gizmoRotateY_);
+    setVisibility(gizmoRotateZ_);
+    setVisibility(gizmoScaleX_);
+    setVisibility(gizmoScaleY_);
+    setVisibility(gizmoScaleZ_);
+}
+
+int Viewport3D::pickGizmoAxis(int x, int y) {
+    if (!renderer_ || !renderWindow_) return -1;
+    
+    int* size = renderWindow_->GetSize();
+    double displayY = static_cast<double>(size[1] - y - 1);
+    
+    vtkSmartPointer<vtkPropPicker> picker = vtkSmartPointer<vtkPropPicker>::New();
+    picker->Pick(x, displayY, 0, renderer_);
+    
+    vtkActor* pickedActor = picker->GetActor();
+    if (!pickedActor) return -1;
+    
+    if (pickedActor == gizmoXArrow_.GetPointer()) return 0; // X axis
+    if (pickedActor == gizmoYArrow_.GetPointer()) return 1; // Y axis
+    if (pickedActor == gizmoZArrow_.GetPointer()) return 2; // Z axis
+    if (pickedActor == gizmoXYPlane_.GetPointer()) return 3; // XY plane
+    if (pickedActor == gizmoXZPlane_.GetPointer()) return 4; // XZ plane
+    if (pickedActor == gizmoYZPlane_.GetPointer()) return 5; // YZ plane
+    if (pickedActor == gizmoRotateX_.GetPointer()) return 0;
+    if (pickedActor == gizmoRotateY_.GetPointer()) return 1;
+    if (pickedActor == gizmoRotateZ_.GetPointer()) return 2;
+    if (pickedActor == gizmoScaleX_.GetPointer()) return 0;
+    if (pickedActor == gizmoScaleY_.GetPointer()) return 1;
+    if (pickedActor == gizmoScaleZ_.GetPointer()) return 2;
+    
+    return -1;
+}
+
+QVector3D Viewport3D::projectToPlane(const QVector3D& worldPos, ConstraintPlane plane, const QVector3D& planePoint) {
+    QVector3D result = worldPos;
+    
+    switch (plane) {
+        case ConstraintPlane::XY:
+            result.setZ(planePoint.z());
+            break;
+        case ConstraintPlane::XZ:
+            result.setY(planePoint.y());
+            break;
+        case ConstraintPlane::YZ:
+            result.setX(planePoint.x());
+            break;
+        case ConstraintPlane::AxisX:
+            result.setY(planePoint.y());
+            result.setZ(planePoint.z());
+            break;
+        case ConstraintPlane::AxisY:
+            result.setX(planePoint.x());
+            result.setZ(planePoint.z());
+            break;
+        case ConstraintPlane::AxisZ:
+            result.setX(planePoint.x());
+            result.setY(planePoint.y());
+            break;
+        default:
+            break;
+    }
+    
+    return result;
 }
 
 #endif // GEANTCAD_NO_VTK

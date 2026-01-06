@@ -334,6 +334,61 @@ void MainWindow::setupMenus() {
     
     // View menu
     QMenu* viewMenu = menuBar->addMenu("&View");
+    
+    // Projection mode
+    QAction* perspectiveAction = viewMenu->addAction("&Perspective View", this, [this]() { 
+        viewport_->setProjectionMode(Viewport3D::ProjectionMode::Perspective);
+        statusBar_->showMessage("Perspective projection", 1000);
+    });
+    QAction* orthoAction = viewMenu->addAction("&Orthographic View", this, [this]() { 
+        viewport_->setProjectionMode(Viewport3D::ProjectionMode::Orthographic);
+        statusBar_->showMessage("Orthographic projection", 1000);
+    });
+    viewMenu->addAction("Toggle Projection (5)", this, [this]() {
+        if (viewport_->getProjectionMode() == Viewport3D::ProjectionMode::Perspective) {
+            viewport_->setProjectionMode(Viewport3D::ProjectionMode::Orthographic);
+            statusBar_->showMessage("Orthographic projection", 1000);
+        } else {
+            viewport_->setProjectionMode(Viewport3D::ProjectionMode::Perspective);
+            statusBar_->showMessage("Perspective projection", 1000);
+        }
+    }, QKeySequence("5"));
+    
+    viewMenu->addSeparator();
+    
+    // Standard views submenu
+    QMenu* standardViewsMenu = viewMenu->addMenu("&Standard Views");
+    standardViewsMenu->addAction("Front (1)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Front);
+        statusBar_->showMessage("Front view (+Y)", 1000);
+    }, QKeySequence("1"));
+    standardViewsMenu->addAction("Back (Ctrl+1)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Back);
+        statusBar_->showMessage("Back view (-Y)", 1000);
+    }, QKeySequence("Ctrl+1"));
+    standardViewsMenu->addAction("Left (3)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Left);
+        statusBar_->showMessage("Left view (+X)", 1000);
+    }, QKeySequence("3"));
+    standardViewsMenu->addAction("Right (Ctrl+3)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Right);
+        statusBar_->showMessage("Right view (-X)", 1000);
+    }, QKeySequence("Ctrl+3"));
+    standardViewsMenu->addAction("Top (7)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Top);
+        statusBar_->showMessage("Top view (+Z)", 1000);
+    }, QKeySequence("7"));
+    standardViewsMenu->addAction("Bottom (Ctrl+7)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Bottom);
+        statusBar_->showMessage("Bottom view (-Z)", 1000);
+    }, QKeySequence("Ctrl+7"));
+    standardViewsMenu->addAction("Isometric (0)", this, [this]() {
+        viewport_->setStandardView(Viewport3D::StandardView::Isometric);
+        statusBar_->showMessage("Isometric view", 1000);
+    }, QKeySequence("0"));
+    
+    viewMenu->addSeparator();
+    
     QAction* frameAction = viewMenu->addAction(style()->standardIcon(QStyle::SP_FileDialogListView), "Frame &Selection", this, [this]() { 
         viewport_->frameSelection();
         statusBar_->showMessage("Framed selection", 1000);
@@ -723,15 +778,15 @@ void MainWindow::connectSignals() {
     });
     connect(toolbar_, &Toolbar::toolMove, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Move);
-        statusBar_->showMessage("Move tool - use Properties panel to adjust position", 2000);
+        statusBar_->showMessage("Move (G) - Drag object or gizmo arrows. X/Y/Z to constrain axis. Shift+X/Y/Z for plane.", 4000);
     });
     connect(toolbar_, &Toolbar::toolRotate, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Rotate);
-        statusBar_->showMessage("Rotate tool - use Properties panel to adjust rotation", 2000);
+        statusBar_->showMessage("Rotate (R) - Drag to rotate. X/Y/Z to constrain axis.", 4000);
     });
     connect(toolbar_, &Toolbar::toolScale, this, [this]() {
         viewport_->setInteractionMode(Viewport3D::InteractionMode::Scale);
-        statusBar_->showMessage("Scale tool - use Properties panel to adjust geometry", 2000);
+        statusBar_->showMessage("Scale (T) - Drag to scale geometry. X/Y/Z to constrain axis.", 4000);
     });
     
     // Viewport mode changes -> update toolbar

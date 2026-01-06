@@ -53,6 +53,27 @@ public:
     void setInteractionMode(InteractionMode mode);
     InteractionMode getInteractionMode() const { return interactionMode_; }
     
+    // Movement constraint planes
+    enum class ConstraintPlane {
+        None,       // Free movement (screen-aligned)
+        XY,         // Movement constrained to XY plane (Z=const)
+        XZ,         // Movement constrained to XZ plane (Y=const)
+        YZ,         // Movement constrained to YZ plane (X=const)
+        AxisX,      // Movement along X axis only
+        AxisY,      // Movement along Y axis only
+        AxisZ       // Movement along Z axis only
+    };
+    void setConstraintPlane(ConstraintPlane plane);
+    ConstraintPlane getConstraintPlane() const { return constraintPlane_; }
+    
+    // Projection mode
+    enum class ProjectionMode {
+        Perspective,
+        Orthographic
+    };
+    void setProjectionMode(ProjectionMode mode);
+    ProjectionMode getProjectionMode() const { return projectionMode_; }
+    
     // Camera controls
     void resetView();
     void frameSelection();
@@ -111,6 +132,8 @@ private:
     SceneGraph* sceneGraph_;
     CommandStack* commandStack_ = nullptr;
     InteractionMode interactionMode_ = InteractionMode::Select;
+    ConstraintPlane constraintPlane_ = ConstraintPlane::XY; // Default to XY plane (ground)
+    ProjectionMode projectionMode_ = ProjectionMode::Perspective;
     
 #ifndef GEANTCAD_NO_VTK
     vtkSmartPointer<vtkRenderer> renderer_;
@@ -141,9 +164,29 @@ private:
     // View cube widget
     vtkSmartPointer<vtkOrientationMarkerWidget> viewCubeWidget_;
     
+    // Gizmo actors
+    vtkSmartPointer<vtkActor> gizmoXArrow_;
+    vtkSmartPointer<vtkActor> gizmoYArrow_;
+    vtkSmartPointer<vtkActor> gizmoZArrow_;
+    vtkSmartPointer<vtkActor> gizmoXYPlane_;
+    vtkSmartPointer<vtkActor> gizmoXZPlane_;
+    vtkSmartPointer<vtkActor> gizmoYZPlane_;
+    vtkSmartPointer<vtkActor> gizmoRotateX_;
+    vtkSmartPointer<vtkActor> gizmoRotateY_;
+    vtkSmartPointer<vtkActor> gizmoRotateZ_;
+    vtkSmartPointer<vtkActor> gizmoScaleX_;
+    vtkSmartPointer<vtkActor> gizmoScaleY_;
+    vtkSmartPointer<vtkActor> gizmoScaleZ_;
+    int activeGizmoAxis_ = -1; // -1 = none, 0 = X, 1 = Y, 2 = Z, 3 = XY, 4 = XZ, 5 = YZ
+    
     // Helper functions for manipulation
     QVector3D screenToWorld(int x, int y, double depth = 0.0);
     double getDepthAtPosition(int x, int y);
+    QVector3D projectToPlane(const QVector3D& worldPos, ConstraintPlane plane, const QVector3D& planePoint);
+    void createGizmos();
+    void updateGizmoPosition();
+    void showGizmo(bool show);
+    int pickGizmoAxis(int x, int y);
 #endif
 };
 
