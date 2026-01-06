@@ -12,6 +12,7 @@
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkBoxWidget.h>
 #include <vtkTransform.h>
+#include <vtkOrientationMarkerWidget.h>
 #endif
 
 #include "../../core/include/SceneGraph.hh"
@@ -58,6 +59,18 @@ public:
     void resetView();
     void frameSelection();
     
+    // Standard view presets (for view-cube)
+    enum class StandardView {
+        Front,      // +Y
+        Back,       // -Y
+        Left,       // +X
+        Right,      // -X
+        Top,        // +Z
+        Bottom,     // -Z
+        Isometric   // 45° isometric
+    };
+    void setStandardView(StandardView view);
+    
     // Grid controls
     void setGridVisible(bool visible);
     bool isGridVisible() const { return gridVisible_; }
@@ -92,6 +105,7 @@ private:
     void setupManipulator();
     void updateManipulator();
     void onManipulatorInteraction();
+    void setupViewCube();
 #ifndef GEANTCAD_NO_VTK
     void updateSelectionHighlight(VolumeNode* selectedNode);
     void showContextMenu(const QPoint& pos);
@@ -126,6 +140,9 @@ private:
     // Picking state
     bool isPicking_ = false;
     QPoint lastPickPos_;
+    
+    // View cube widget
+    vtkSmartPointer<vtkOrientationMarkerWidget> viewCubeWidget_;
 #endif
 };
 

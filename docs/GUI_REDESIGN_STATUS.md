@@ -66,22 +66,28 @@
 - ✅ COORDINATION.md con convenzioni aggiornate
 - ✅ GUI_REDESIGN_STATUS.md (questo file)
 
-## 🔄 Da Fare (Priorità Alta)
+## ✅ Completato (Alta Priorità)
 
 ### 1. Integrazione Nuovi Widget in MainWindow
-- ⏳ Aggiungere ViewCube come overlay nel viewport
-- ⏳ Collegare ClippingPlaneWidget al viewport VTK
-- ⏳ Collegare MeasurementTool al picking VTK
-- ⏳ Aggiungere HistoryPanel come dock widget o tab
+- ✅ ViewCube come overlay nel viewport (angolo in alto a destra)
+- ✅ ClippingPlaneWidget collegato al viewport VTK (dock widget)
+- ✅ MeasurementTool come dock widget
+- ✅ HistoryPanel come dock widget
 
 ### 2. Collegare Segnali Toolbar
-- ⏳ View actions → camera VTK
-- ⏳ Shape creation → scene graph
-- ⏳ Analysis tools → widgets corrispondenti
-- ⏳ Undo/Redo → command stack
+- ✅ View actions → camera VTK (Front, Back, Left, Right, Top, Bottom, Isometric)
+- ✅ Shape creation → scene graph (Box, Tube, Sphere, Cone, Trd)
+- ✅ Analysis tools → dock widgets (Clipping, Measure)
+- ✅ Undo/Redo → command stack + history panel refresh
 
-### 3. Test Build Qt6
-- ⏳ Verificare compilazione con Qt6
+### 3. Menu View - Pannelli
+- ✅ Menu "Panels" per mostrare/nascondere dock widgets
+- ✅ History Panel, Clipping Planes, Measurement Tool
+
+## 🔄 Da Fare (Priorità Alta)
+
+### 1. Test Build Qt6
+- ⏳ Verificare compilazione con Qt6 + VTK Qt6
 - ⏳ Test funzionalità VTK con Qt6
 - ⏳ Fix eventuali API deprecated
 
@@ -141,6 +147,9 @@
 - `core/include/CommandStack.hh` - Added history access methods
 - `app/include/Toolbar.hh` - Enhanced categorized toolbar
 - `app/src/Toolbar.cpp` - Toolbar implementation with categories
+- `app/include/MainWindow.hh` - Added new widget members and slots
+- `app/src/MainWindow.cpp` - Integrated ViewCube, docks, toolbar signals
+- `app/include/Viewport3D.hh` - Added vtkOrientationMarkerWidget include
 - `README.md` - Updated documentation
 - `docs/COORDINATION.md` - Updated conventions
 - `docs/GUI_REDESIGN_STATUS.md` - This file

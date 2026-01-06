@@ -1,6 +1,10 @@
 #include "MainWindow.hh"
 #include "PropertiesPanel.hh"
 #include "SimulationConfigPanel.hh"
+#include "ViewCube.hh"
+#include "ClippingPlaneWidget.hh"
+#include "HistoryPanel.hh"
+#include "MeasurementTool.hh"
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QMenuBar>
@@ -9,6 +13,15 @@
 #include <QApplication>
 #include <QSettings>
 #include <QByteArray>
+#include <QResizeEvent>
+
+#ifndef GEANTCAD_NO_VTK
+#include <vtkSmartPointer.h>
+#include <vtkPlane.h>
+#include <vtkActor.h>
+#include <vtkActorCollection.h>
+#include <vtkMapper.h>
+#endif
 #include "../../core/include/Shape.hh"
 #include "../../core/include/Material.hh"
 #include "../../core/include/Serialization.hh"
@@ -16,7 +29,6 @@
 #include "../../generator/include/GDMLExporter.hh"
 #include "../../generator/include/Geant4ProjectGenerator.hh"
 #include "BuildRunDialog.hh"
-#include "CameraControlWidget.hh"
 #include <QDir>
 #include <QGroupBox>
 using namespace geantcad;
@@ -27,11 +39,19 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , sceneGraph_(new SceneGraph())
     , commandStack_(new CommandStack())
+    , viewCube_(nullptr)
+    , clippingWidget_(nullptr)
+    , historyPanel_(nullptr)
+    , measurementTool_(nullptr)
+    , historyDock_(nullptr)
+    , clippingDock_(nullptr)
+    , measureDock_(nullptr)
 {
     applyStylesheet();
     setupUI(); // Must be called before loadPreferences() so viewport_ exists
     setupMenus();
     setupToolbars();
+    setupDockWidgets();
     setupStatusBar();
     connectSignals();
     loadPreferences(); // Load preferences after UI is set up (but after menus to avoid fullscreen issues)
@@ -79,31 +99,6 @@ void MainWindow::setupUI() {
     viewport_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportLayout->addWidget(viewport_);
     
-    // Add camera control widget as overlay (absolute positioning)
-    cameraControlWidget_ = new CameraControlWidget(viewportContainer);
-    cameraControlWidget_->setRenderer(viewport_->getRenderer());
-    cameraControlWidget_->setCamera(viewport_->getCamera());
-    cameraControlWidget_->setFixedSize(110, 120);
-    cameraControlWidget_->setAttribute(Qt::WA_TranslucentBackground, false);
-    cameraControlWidget_->setStyleSheet(
-        "QWidget { background-color: rgba(30, 30, 30, 220); border: 1px solid #505050; border-radius: 4px; }"
-        "QLabel { color: #e0e0e0; }"
-        "QPushButton { background-color: rgba(43, 43, 43, 220); border: 1px solid #404040; border-radius: 3px; color: #e0e0e0; font-size: 14pt; min-width: 30px; min-height: 30px; }"
-        "QPushButton:hover { background-color: rgba(58, 58, 58, 240); }"
-        "QPushButton:pressed { background-color: rgba(0, 120, 212, 240); }"
-        "QPushButton:disabled { background-color: rgba(26, 26, 26, 200); color: #606060; }"
-    );
-    cameraControlWidget_->raise(); // Bring to front
-    cameraControlWidget_->show();
-    
-    // Connect camera control signals
-    connect(cameraControlWidget_, &CameraControlWidget::viewChanged, this, [this]() {
-        viewport_->refresh();
-    });
-    
-    // Use event filter to keep camera widget positioned correctly
-    viewportContainer->installEventFilter(this);
-    
     mainSplitter_->addWidget(viewportContainer);
     
     // Right: Split verticale - Properties (top) + Simulation Config (bottom)
@@ -140,25 +135,49 @@ void MainWindow::setupUI() {
     // Set initial sizes
     mainSplitter_->setSizes({200, 800, 350});
     
-    // Add camera control widget to viewport (overlay in corner)
-    cameraControlWidget_ = new CameraControlWidget(viewport_);
-    cameraControlWidget_->setRenderer(viewport_->getRenderer());
-    cameraControlWidget_->setCamera(viewport_->getCamera());
-    cameraControlWidget_->setFixedSize(110, 120);
-    cameraControlWidget_->move(10, 10); // Top-left corner
-    cameraControlWidget_->setStyleSheet(
-        "QWidget { background-color: rgba(30, 30, 30, 200); border-radius: 4px; }"
-        "QPushButton { background-color: rgba(43, 43, 43, 200); border: 1px solid #404040; border-radius: 3px; color: #e0e0e0; font-size: 14pt; }"
-        "QPushButton:hover { background-color: rgba(58, 58, 58, 200); }"
-        "QPushButton:pressed { background-color: rgba(0, 120, 212, 200); }"
-        "QPushButton:disabled { background-color: rgba(26, 26, 26, 200); color: #606060; }"
-    );
-    cameraControlWidget_->show();
+    // Add ViewCube overlay in top-right corner
+    viewCube_ = new ViewCube(viewport_);
+    viewCube_->setFixedSize(100, 100);
+    viewCube_->setRenderer(viewport_->getRenderer());
+    viewCube_->setCamera(viewport_->getCamera());
+    viewCube_->show();
+    viewCube_->raise();
     
-    // Connect camera control signals
-    connect(cameraControlWidget_, &CameraControlWidget::viewChanged, this, [this]() {
+    // Connect ViewCube signals
+    connect(viewCube_, &ViewCube::viewChanged, this, [this]() {
         viewport_->refresh();
     });
+    
+    connect(viewCube_, &ViewCube::viewOrientationRequested, this, [this](ViewCube::ViewOrientation orientation) {
+        switch (orientation) {
+            case ViewCube::ViewOrientation::Front:
+                viewport_->setStandardView(Viewport3D::StandardView::Front);
+                break;
+            case ViewCube::ViewOrientation::Back:
+                viewport_->setStandardView(Viewport3D::StandardView::Back);
+                break;
+            case ViewCube::ViewOrientation::Left:
+                viewport_->setStandardView(Viewport3D::StandardView::Left);
+                break;
+            case ViewCube::ViewOrientation::Right:
+                viewport_->setStandardView(Viewport3D::StandardView::Right);
+                break;
+            case ViewCube::ViewOrientation::Top:
+                viewport_->setStandardView(Viewport3D::StandardView::Top);
+                break;
+            case ViewCube::ViewOrientation::Bottom:
+                viewport_->setStandardView(Viewport3D::StandardView::Bottom);
+                break;
+            default:
+                viewport_->setStandardView(Viewport3D::StandardView::Isometric);
+                break;
+        }
+        viewCube_->updateFromCamera();
+        statusBar_->showMessage("View changed", 1000);
+    });
+    
+    // Install event filter on viewport for resize handling
+    viewport_->installEventFilter(this);
 }
 
 void MainWindow::setupMenus() {
@@ -266,6 +285,39 @@ void MainWindow::setupMenus() {
     
     viewMenu->addSeparator();
     
+    // Panels submenu
+    QMenu* panelsMenu = viewMenu->addMenu("&Panels");
+    
+    QAction* historyPanelAction = panelsMenu->addAction("&History Panel", this, [this]() {
+        if (historyDock_) {
+            historyDock_->setVisible(!historyDock_->isVisible());
+        }
+    });
+    historyPanelAction->setCheckable(true);
+    
+    QAction* clippingPanelAction = panelsMenu->addAction("&Clipping Planes", this, [this]() {
+        if (clippingDock_) {
+            clippingDock_->setVisible(!clippingDock_->isVisible());
+        }
+    });
+    clippingPanelAction->setCheckable(true);
+    
+    QAction* measurePanelAction = panelsMenu->addAction("&Measurement Tool", this, [this]() {
+        if (measureDock_) {
+            measureDock_->setVisible(!measureDock_->isVisible());
+        }
+    });
+    measurePanelAction->setCheckable(true);
+    
+    // Update panel checkmarks when menu is about to show
+    connect(viewMenu, &QMenu::aboutToShow, this, [=]() {
+        historyPanelAction->setChecked(historyDock_ && historyDock_->isVisible());
+        clippingPanelAction->setChecked(clippingDock_ && clippingDock_->isVisible());
+        measurePanelAction->setChecked(measureDock_ && measureDock_->isVisible());
+    });
+    
+    viewMenu->addSeparator();
+    
     // Grid spacing submenu
     QMenu* gridSpacingMenu = viewMenu->addMenu("Grid &Spacing");
     QActionGroup* spacingGroup = new QActionGroup(this);
@@ -305,15 +357,208 @@ void MainWindow::setupToolbars() {
     addToolBar(Qt::TopToolBarArea, toolbar_);
 }
 
+void MainWindow::setupDockWidgets() {
+    // === History Panel (dock on the right) ===
+    historyDock_ = new QDockWidget("History", this);
+    historyDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    historyDock_->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    
+    historyPanel_ = new HistoryPanel(this);
+    historyPanel_->setCommandStack(commandStack_);
+    historyDock_->setWidget(historyPanel_);
+    historyDock_->setMinimumWidth(200);
+    historyDock_->hide(); // Hidden by default, shown via menu/toolbar
+    
+    addDockWidget(Qt::RightDockWidgetArea, historyDock_);
+    
+    // === Clipping Planes Panel (dock on the right) ===
+    clippingDock_ = new QDockWidget("Clipping Planes", this);
+    clippingDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    clippingDock_->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    
+    clippingWidget_ = new ClippingPlaneWidget(this);
+    clippingWidget_->setRenderer(viewport_->getRenderer());
+    clippingDock_->setWidget(clippingWidget_);
+    clippingDock_->setMinimumWidth(250);
+    clippingDock_->hide(); // Hidden by default
+    
+    addDockWidget(Qt::RightDockWidgetArea, clippingDock_);
+    
+    // === Measurement Tool Panel (dock on the right) ===
+    measureDock_ = new QDockWidget("Measurement", this);
+    measureDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    measureDock_->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    
+    measurementTool_ = new MeasurementTool(this);
+    measurementTool_->setRenderer(viewport_->getRenderer());
+    measureDock_->setWidget(measurementTool_);
+    measureDock_->setMinimumWidth(250);
+    measureDock_->hide(); // Hidden by default
+    
+    addDockWidget(Qt::RightDockWidgetArea, measureDock_);
+    
+    // Connect clipping widget to viewport refresh
+    connect(clippingWidget_, &ClippingPlaneWidget::planeChanged, this, [this]() {
+        // Apply clipping planes to all actors in renderer
+#ifndef GEANTCAD_NO_VTK
+        if (viewport_ && viewport_->getRenderer()) {
+            auto renderer = viewport_->getRenderer();
+            auto actors = renderer->GetActors();
+            actors->InitTraversal();
+            
+            // Clear existing clipping planes
+            vtkActor* actor;
+            while ((actor = actors->GetNextActor()) != nullptr) {
+                actor->GetMapper()->RemoveAllClippingPlanes();
+            }
+            
+            // Apply active clipping planes
+            auto applyPlane = [&](ClippingPlaneWidget::PlaneAxis axis) {
+                if (clippingWidget_->isPlaneEnabled(axis)) {
+                    vtkSmartPointer<vtkPlane> plane = vtkSmartPointer<vtkPlane>::New();
+                    double pos = clippingWidget_->getPlanePosition(axis);
+                    bool flipped = clippingWidget_->isFlipped(axis);
+                    double normal = flipped ? -1.0 : 1.0;
+                    
+                    switch (axis) {
+                        case ClippingPlaneWidget::PlaneAxis::X:
+                            plane->SetNormal(normal, 0, 0);
+                            plane->SetOrigin(pos, 0, 0);
+                            break;
+                        case ClippingPlaneWidget::PlaneAxis::Y:
+                            plane->SetNormal(0, normal, 0);
+                            plane->SetOrigin(0, pos, 0);
+                            break;
+                        case ClippingPlaneWidget::PlaneAxis::Z:
+                            plane->SetNormal(0, 0, normal);
+                            plane->SetOrigin(0, 0, pos);
+                            break;
+                        default:
+                            break;
+                    }
+                    
+                    actors->InitTraversal();
+                    while ((actor = actors->GetNextActor()) != nullptr) {
+                        actor->GetMapper()->AddClippingPlane(plane);
+                    }
+                }
+            };
+            
+            applyPlane(ClippingPlaneWidget::PlaneAxis::X);
+            applyPlane(ClippingPlaneWidget::PlaneAxis::Y);
+            applyPlane(ClippingPlaneWidget::PlaneAxis::Z);
+            
+            viewport_->refresh();
+        }
+#endif
+    });
+    
+    // Connect history panel signals
+    connect(historyPanel_, &HistoryPanel::historyChanged, this, [this]() {
+        outliner_->refresh();
+        viewport_->refresh();
+        inspector_->setNode(sceneGraph_->getSelected());
+    });
+    
+    connect(historyPanel_, &HistoryPanel::stateRestored, this, [this]() {
+        outliner_->refresh();
+        viewport_->refresh();
+        inspector_->setNode(sceneGraph_->getSelected());
+        statusBar_->showMessage("State restored", 2000);
+    });
+}
+
 void MainWindow::setupStatusBar() {
     statusBar_ = statusBar();
     statusBar_->showMessage("Ready");
 }
 
 void MainWindow::connectSignals() {
-    // Shape creation moved to Insert -> Shape menu
-    // Toolbar now only handles manipulation tools
+    // === History actions ===
+    connect(toolbar_, &Toolbar::undoAction, this, &MainWindow::onUndo);
+    connect(toolbar_, &Toolbar::redoAction, this, &MainWindow::onRedo);
     
+    // === View actions from toolbar ===
+    connect(toolbar_, &Toolbar::viewFront, this, &MainWindow::onViewFront);
+    connect(toolbar_, &Toolbar::viewBack, this, &MainWindow::onViewBack);
+    connect(toolbar_, &Toolbar::viewLeft, this, &MainWindow::onViewLeft);
+    connect(toolbar_, &Toolbar::viewRight, this, &MainWindow::onViewRight);
+    connect(toolbar_, &Toolbar::viewTop, this, &MainWindow::onViewTop);
+    connect(toolbar_, &Toolbar::viewBottom, this, &MainWindow::onViewBottom);
+    connect(toolbar_, &Toolbar::viewIsometric, this, &MainWindow::onViewIsometric);
+    
+    connect(toolbar_, &Toolbar::viewFrameSelection, this, [this]() {
+        viewport_->frameSelection();
+        statusBar_->showMessage("Framed selection", 1000);
+    });
+    
+    connect(toolbar_, &Toolbar::viewReset, this, [this]() {
+        viewport_->resetView();
+        if (viewCube_) viewCube_->updateFromCamera();
+        statusBar_->showMessage("View reset", 1000);
+    });
+    
+    // === Analysis tools ===
+    connect(toolbar_, &Toolbar::toggleClippingPlanes, this, &MainWindow::onToggleClippingPlanes);
+    connect(toolbar_, &Toolbar::toggleMeasureTool, this, &MainWindow::onToggleMeasureTool);
+    
+    // === Shape creation from toolbar ===
+    connect(toolbar_, &Toolbar::createBox, this, [this]() {
+        auto boxShape = makeBox(50.0, 50.0, 50.0);
+        auto material = Material::makeAir();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Box", std::move(boxShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Created Box", 2000);
+    });
+    
+    connect(toolbar_, &Toolbar::createTube, this, [this]() {
+        auto tubeShape = makeTube(0.0, 30.0, 50.0);
+        auto material = Material::makeWater();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Tube", std::move(tubeShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Created Tube", 2000);
+    });
+    
+    connect(toolbar_, &Toolbar::createSphere, this, [this]() {
+        auto sphereShape = makeSphere(0.0, 40.0);
+        auto material = Material::makeAir();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Sphere", std::move(sphereShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Created Sphere", 2000);
+    });
+    
+    connect(toolbar_, &Toolbar::createCone, this, [this]() {
+        auto coneShape = makeCone(0.0, 20.0, 0.0, 40.0, 50.0);
+        auto material = Material::makeLead();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Cone", std::move(coneShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Created Cone", 2000);
+    });
+    
+    connect(toolbar_, &Toolbar::createTrd, this, [this]() {
+        auto trdShape = makeTrd(30.0, 20.0, 30.0, 20.0, 50.0);
+        auto material = Material::makeSilicon();
+        auto cmd = std::make_unique<CreateVolumeCommand>(sceneGraph_, "Trd", std::move(trdShape), material);
+        commandStack_->execute(std::move(cmd));
+        outliner_->refresh();
+        viewport_->refresh();
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Created Trapezoid", 2000);
+    });
+    
+    // === Manipulation tools ===
     connect(toolbar_, &Toolbar::toolSelect, this, [this]() {
         statusBar_->showMessage("Select tool", 1000);
     });
@@ -335,6 +580,7 @@ void MainWindow::connectSignals() {
             outliner_->refresh();
             viewport_->refresh();
             inspector_->clear();
+            if (historyPanel_) historyPanel_->refresh();
             statusBar_->showMessage("Deleted volume", 2000);
         } else {
             statusBar_->showMessage("No volume selected", 2000);
@@ -357,6 +603,7 @@ void MainWindow::connectSignals() {
             
             outliner_->refresh();
             viewport_->refresh();
+            if (historyPanel_) historyPanel_->refresh();
             statusBar_->showMessage("Duplicated volume", 2000);
         } else {
             statusBar_->showMessage("No volume selected", 2000);
@@ -536,6 +783,96 @@ void MainWindow::onBuildRun() {
     dialog.exec();
 }
 
+// === View action slots ===
+
+void MainWindow::onViewFront() {
+    viewport_->setStandardView(Viewport3D::StandardView::Front);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Front view", 1000);
+}
+
+void MainWindow::onViewBack() {
+    viewport_->setStandardView(Viewport3D::StandardView::Back);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Back view", 1000);
+}
+
+void MainWindow::onViewLeft() {
+    viewport_->setStandardView(Viewport3D::StandardView::Left);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Left view", 1000);
+}
+
+void MainWindow::onViewRight() {
+    viewport_->setStandardView(Viewport3D::StandardView::Right);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Right view", 1000);
+}
+
+void MainWindow::onViewTop() {
+    viewport_->setStandardView(Viewport3D::StandardView::Top);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Top view", 1000);
+}
+
+void MainWindow::onViewBottom() {
+    viewport_->setStandardView(Viewport3D::StandardView::Bottom);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Bottom view", 1000);
+}
+
+void MainWindow::onViewIsometric() {
+    viewport_->setStandardView(Viewport3D::StandardView::Isometric);
+    if (viewCube_) viewCube_->updateFromCamera();
+    statusBar_->showMessage("Isometric view", 1000);
+}
+
+// === Analysis tool slots ===
+
+void MainWindow::onToggleClippingPlanes() {
+    if (clippingDock_) {
+        bool visible = !clippingDock_->isVisible();
+        clippingDock_->setVisible(visible);
+        statusBar_->showMessage(visible ? "Clipping planes enabled" : "Clipping planes disabled", 1000);
+    }
+}
+
+void MainWindow::onToggleMeasureTool() {
+    if (measureDock_) {
+        bool visible = !measureDock_->isVisible();
+        measureDock_->setVisible(visible);
+        statusBar_->showMessage(visible ? "Measurement tool enabled" : "Measurement tool disabled", 1000);
+    }
+}
+
+// === History slots ===
+
+void MainWindow::onUndo() {
+    if (commandStack_ && commandStack_->canUndo()) {
+        commandStack_->undo();
+        outliner_->refresh();
+        viewport_->refresh();
+        inspector_->setNode(sceneGraph_->getSelected());
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Undo", 1000);
+    } else {
+        statusBar_->showMessage("Nothing to undo", 1000);
+    }
+}
+
+void MainWindow::onRedo() {
+    if (commandStack_ && commandStack_->canRedo()) {
+        commandStack_->redo();
+        outliner_->refresh();
+        viewport_->refresh();
+        inspector_->setNode(sceneGraph_->getSelected());
+        if (historyPanel_) historyPanel_->refresh();
+        statusBar_->showMessage("Redo", 1000);
+    } else {
+        statusBar_->showMessage("Nothing to redo", 1000);
+    }
+}
+
 void MainWindow::applyStylesheet() {
     // Try to load from resources first
     QFile styleFile(":/stylesheets/modern-dark.qss");
@@ -613,16 +950,21 @@ void MainWindow::savePreferences() {
     }
 }
 
-bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
-    // Keep camera control widget positioned in top-left corner of viewport container
-    if (obj == viewport_->parent() && event->type() == QEvent::Resize) {
-        if (cameraControlWidget_) {
-            QWidget* container = qobject_cast<QWidget*>(obj);
-            if (container) {
-                cameraControlWidget_->move(10, 10);
-            }
-        }
+void MainWindow::updateViewCubePosition() {
+    if (viewCube_ && viewport_) {
+        // Position ViewCube in top-right corner of viewport
+        int x = viewport_->width() - viewCube_->width() - 10;
+        int y = 10;
+        viewCube_->move(x, y);
     }
+}
+
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+    // Keep ViewCube positioned in top-right corner of viewport
+    if ((obj == viewport_->parent() || obj == viewport_) && event->type() == QEvent::Resize) {
+        updateViewCubePosition();
+    }
+    
     return QMainWindow::eventFilter(obj, event);
 }
 

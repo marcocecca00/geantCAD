@@ -78,15 +78,8 @@ Viewport3D::Viewport3D(QWidget* parent)
     setupRenderer();
     setupInteractor();
     
-    // Add axes for reference (only after interactor is set)
-    if (interactor_) {
-        vtkSmartPointer<vtkAxesActor> axes = vtkSmartPointer<vtkAxesActor>::New();
-        vtkSmartPointer<vtkOrientationMarkerWidget> widget = vtkSmartPointer<vtkOrientationMarkerWidget>::New();
-        widget->SetOrientationMarker(axes);
-        widget->SetInteractor(interactor_);
-        widget->SetEnabled(1);
-        widget->InteractiveOn();
-    }
+    // Setup view cube (only after interactor is set)
+    setupViewCube();
     
     setupManipulator();
 }
@@ -148,147 +141,52 @@ void Viewport3D::setupInteractor() {
 }
 
 void Viewport3D::addGrid() {
+    // Grid disabled - using only coordinate axes for orientation
+    // The ViewCube provides better orientation feedback
     if (!renderer_) return;
     
-    // Remove existing grid actors if present
+    // Remove existing grid if present
     if (gridActor_) {
         renderer_->RemoveActor(gridActor_);
         gridActor_ = nullptr;
     }
     
+    // Only add simple origin axes (short, visible at origin)
     if (!gridVisible_) return;
     
-    // Create 3D infinite grid to show spatial orientation
-    // Grid extends in all three dimensions to help understand 3D space
-    const double gridExtent = 100000.0; // 100 meters - effectively infinite
-    const int gridLines = 200; // Reasonable number of lines for performance
+    const double axisLength = 100.0; // 100mm axes at origin
     
-    vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
-    vtkSmartPointer<vtkCellArray> lines = vtkSmartPointer<vtkCellArray>::New();
-    
-    // XY plane grid (at z=0) - horizontal grid
-    for (int i = -gridLines/2; i <= gridLines/2; ++i) {
-        double x = i * gridSpacing_;
-        // Lines parallel to Y axis
-        vtkIdType p1 = points->InsertNextPoint(x, -gridExtent, 0.0);
-        vtkIdType p2 = points->InsertNextPoint(x, gridExtent, 0.0);
-        lines->InsertNextCell(2);
-        lines->InsertCellPoint(p1);
-        lines->InsertCellPoint(p2);
+    // Create colored axes at origin
+    auto createAxisActor = [this](double x1, double y1, double z1, 
+                                   double x2, double y2, double z2,
+                                   double r, double g, double b) {
+        vtkSmartPointer<vtkLineSource> line = vtkSmartPointer<vtkLineSource>::New();
+        line->SetPoint1(x1, y1, z1);
+        line->SetPoint2(x2, y2, z2);
         
-        double y = i * gridSpacing_;
-        // Lines parallel to X axis
-        vtkIdType p3 = points->InsertNextPoint(-gridExtent, y, 0.0);
-        vtkIdType p4 = points->InsertNextPoint(gridExtent, y, 0.0);
-        lines->InsertNextCell(2);
-        lines->InsertCellPoint(p3);
-        lines->InsertCellPoint(p4);
-    }
-    
-    // XZ plane grid (at y=0) - front/back grid
-    for (int i = -gridLines/2; i <= gridLines/2; ++i) {
-        double x = i * gridSpacing_;
-        // Lines parallel to Z axis
-        vtkIdType p1 = points->InsertNextPoint(x, 0.0, -gridExtent);
-        vtkIdType p2 = points->InsertNextPoint(x, 0.0, gridExtent);
-        lines->InsertNextCell(2);
-        lines->InsertCellPoint(p1);
-        lines->InsertCellPoint(p2);
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(line->GetOutputPort());
         
-        double z = i * gridSpacing_;
-        // Lines parallel to X axis
-        vtkIdType p3 = points->InsertNextPoint(-gridExtent, 0.0, z);
-        vtkIdType p4 = points->InsertNextPoint(gridExtent, 0.0, z);
-        lines->InsertNextCell(2);
-        lines->InsertCellPoint(p3);
-        lines->InsertCellPoint(p4);
-    }
-    
-    // YZ plane grid (at x=0) - side grid
-    for (int i = -gridLines/2; i <= gridLines/2; ++i) {
-        double y = i * gridSpacing_;
-        // Lines parallel to Z axis
-        vtkIdType p1 = points->InsertNextPoint(0.0, y, -gridExtent);
-        vtkIdType p2 = points->InsertNextPoint(0.0, y, gridExtent);
-        lines->InsertNextCell(2);
-        lines->InsertCellPoint(p1);
-        lines->InsertCellPoint(p2);
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->GetProperty()->SetColor(r, g, b);
+        actor->GetProperty()->SetLineWidth(2.0);
+        actor->GetProperty()->SetOpacity(0.8);
         
-        double z = i * gridSpacing_;
-        // Lines parallel to Y axis
-        vtkIdType p3 = points->InsertNextPoint(0.0, -gridExtent, z);
-        vtkIdType p4 = points->InsertNextPoint(0.0, gridExtent, z);
-        lines->InsertNextCell(2);
-        lines->InsertCellPoint(p3);
-        lines->InsertCellPoint(p4);
-    }
-    
-    vtkSmartPointer<vtkPolyData> gridPolyData = vtkSmartPointer<vtkPolyData>::New();
-    gridPolyData->SetPoints(points);
-    gridPolyData->SetLines(lines);
-    
-    vtkSmartPointer<vtkPolyDataMapper> gridMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    gridMapper->SetInputData(gridPolyData);
-    
-    gridActor_ = vtkSmartPointer<vtkActor>::New();
-    gridActor_->SetMapper(gridMapper);
-    gridActor_->GetProperty()->SetColor(0.5, 0.5, 0.5); // Lighter gray for better visibility
-    gridActor_->GetProperty()->SetLineWidth(1.0);
-    gridActor_->GetProperty()->SetOpacity(0.6); // More visible
-    
-    renderer_->AddActor(gridActor_);
-    
-    // Add coordinate axes lines separately (thicker, colored)
-    // X axis (red) - thicker
-    vtkSmartPointer<vtkPoints> axisPoints = vtkSmartPointer<vtkPoints>::New();
-    vtkSmartPointer<vtkCellArray> axisLines = vtkSmartPointer<vtkCellArray>::New();
+        return actor;
+    };
     
     // X axis (red)
-    vtkIdType x1 = axisPoints->InsertNextPoint(-gridExtent, 0.0, 0.0);
-    vtkIdType x2 = axisPoints->InsertNextPoint(gridExtent, 0.0, 0.0);
-    axisLines->InsertNextCell(2);
-    axisLines->InsertCellPoint(x1);
-    axisLines->InsertCellPoint(x2);
+    auto xAxis = createAxisActor(0, 0, 0, axisLength, 0, 0, 1.0, 0.3, 0.3);
+    renderer_->AddActor(xAxis);
     
-    // Y axis (green)
-    vtkIdType y1 = axisPoints->InsertNextPoint(0.0, -gridExtent, 0.0);
-    vtkIdType y2 = axisPoints->InsertNextPoint(0.0, gridExtent, 0.0);
-    axisLines->InsertNextCell(2);
-    axisLines->InsertCellPoint(y1);
-    axisLines->InsertCellPoint(y2);
+    // Y axis (green)  
+    auto yAxis = createAxisActor(0, 0, 0, 0, axisLength, 0, 0.3, 1.0, 0.3);
+    renderer_->AddActor(yAxis);
     
     // Z axis (blue)
-    vtkIdType z1 = axisPoints->InsertNextPoint(0.0, 0.0, -gridExtent);
-    vtkIdType z2 = axisPoints->InsertNextPoint(0.0, 0.0, gridExtent);
-    axisLines->InsertNextCell(2);
-    axisLines->InsertCellPoint(z1);
-    axisLines->InsertCellPoint(z2);
-    
-    vtkSmartPointer<vtkPolyData> axisPolyData = vtkSmartPointer<vtkPolyData>::New();
-    axisPolyData->SetPoints(axisPoints);
-    axisPolyData->SetLines(axisLines);
-    
-    vtkSmartPointer<vtkPolyDataMapper> axisMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    axisMapper->SetInputData(axisPolyData);
-    
-    // Create separate actors for each axis with colors
-    vtkSmartPointer<vtkActor> xAxisActor = vtkSmartPointer<vtkActor>::New();
-    xAxisActor->SetMapper(axisMapper);
-    xAxisActor->GetProperty()->SetColor(1.0, 0.0, 0.0); // Red
-    xAxisActor->GetProperty()->SetLineWidth(2.0);
-    renderer_->AddActor(xAxisActor);
-    
-    vtkSmartPointer<vtkActor> yAxisActor = vtkSmartPointer<vtkActor>::New();
-    yAxisActor->SetMapper(axisMapper);
-    yAxisActor->GetProperty()->SetColor(0.0, 1.0, 0.0); // Green
-    yAxisActor->GetProperty()->SetLineWidth(2.0);
-    renderer_->AddActor(yAxisActor);
-    
-    vtkSmartPointer<vtkActor> zAxisActor = vtkSmartPointer<vtkActor>::New();
-    zAxisActor->SetMapper(axisMapper);
-    zAxisActor->GetProperty()->SetColor(0.0, 0.0, 1.0); // Blue
-    zAxisActor->GetProperty()->SetLineWidth(2.0);
-    renderer_->AddActor(zAxisActor);
+    auto zAxis = createAxisActor(0, 0, 0, 0, 0, axisLength, 0.3, 0.3, 1.0);
+    renderer_->AddActor(zAxis);
 }
 
 void Viewport3D::setGridVisible(bool visible) {
@@ -332,6 +230,96 @@ void Viewport3D::resetView() {
         renderer_->ResetCamera();
         renderWindow_->Render();
     }
+#endif
+}
+
+void Viewport3D::setStandardView(StandardView view) {
+#ifdef GEANTCAD_NO_VTK
+    (void)view; // No-op without VTK
+#else
+    if (!renderer_ || !getCamera()) return;
+    
+    vtkCamera* camera = getCamera();
+    double distance = 500.0; // Default distance
+    
+    switch (view) {
+        case StandardView::Front: // +Y
+            camera->SetPosition(0, distance, 0);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 0, 1);
+            break;
+        case StandardView::Back: // -Y
+            camera->SetPosition(0, -distance, 0);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 0, 1);
+            break;
+        case StandardView::Left: // +X
+            camera->SetPosition(distance, 0, 0);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 0, 1);
+            break;
+        case StandardView::Right: // -X
+            camera->SetPosition(-distance, 0, 0);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 0, 1);
+            break;
+        case StandardView::Top: // +Z
+            camera->SetPosition(0, 0, distance);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 1, 0);
+            break;
+        case StandardView::Bottom: // -Z
+            camera->SetPosition(0, 0, -distance);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 1, 0);
+            break;
+        case StandardView::Isometric: // 45° isometric
+            camera->SetPosition(distance, distance, distance);
+            camera->SetFocalPoint(0, 0, 0);
+            camera->SetViewUp(0, 0, 1);
+            break;
+    }
+    
+    renderer_->ResetCamera();
+    renderWindow_->Render();
+    emit viewChanged();
+#endif
+}
+
+void Viewport3D::setupViewCube() {
+#ifdef GEANTCAD_NO_VTK
+    // No-op without VTK
+#else
+    if (!interactor_) return;
+    
+    // Create a cube actor for the view cube
+    vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
+    cube->SetXLength(1.0);
+    cube->SetYLength(1.0);
+    cube->SetZLength(1.0);
+    cube->SetCenter(0, 0, 0);
+    
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(cube->GetOutputPort());
+    
+    vtkSmartPointer<vtkActor> cubeActor = vtkSmartPointer<vtkActor>::New();
+    cubeActor->SetMapper(mapper);
+    
+    // Style the cube: wireframe with colored faces
+    cubeActor->GetProperty()->SetRepresentationToWireframe();
+    cubeActor->GetProperty()->SetColor(0.8, 0.8, 0.8);
+    cubeActor->GetProperty()->SetLineWidth(2.0);
+    cubeActor->GetProperty()->SetOpacity(0.8);
+    
+    // Create orientation marker widget with cube
+    viewCubeWidget_ = vtkSmartPointer<vtkOrientationMarkerWidget>::New();
+    viewCubeWidget_->SetOrientationMarker(cubeActor);
+    viewCubeWidget_->SetInteractor(interactor_);
+    viewCubeWidget_->SetEnabled(1);
+    viewCubeWidget_->InteractiveOn();
+    
+    // Position in bottom-right corner
+    viewCubeWidget_->SetViewport(0.0, 0.0, 0.2, 0.2);
 #endif
 }
 
