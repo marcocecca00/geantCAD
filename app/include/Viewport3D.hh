@@ -75,6 +75,10 @@ public:
     void setProjectionMode(ProjectionMode mode);
     ProjectionMode getProjectionMode() const { return projectionMode_; }
     
+    // Wireframe mode
+    void setWireframeMode(bool enabled);
+    bool isWireframeMode() const { return wireframeMode_; }
+    
     // Camera controls
     void resetView();
     void frameSelection();
@@ -147,6 +151,7 @@ private:
     void setupViewCube();
     void createGrid();
     void updateGrid();
+    void createWorldBox();  // Geant4 world volume wireframe
 #ifndef GEANTCAD_NO_VTK
     void updateSelectionHighlight(VolumeNode* selectedNode);
     void showContextMenu(const QPoint& pos);
@@ -156,8 +161,9 @@ private:
     CommandStack* commandStack_ = nullptr;
     InteractionMode interactionMode_ = InteractionMode::Select;
     ConstraintPlane constraintPlane_ = ConstraintPlane::XY; // Default to XY plane (ground)
-    ProjectionMode projectionMode_ = ProjectionMode::Perspective;
+    ProjectionMode projectionMode_ = ProjectionMode::Orthographic;  // CAD default
     bool measurementMode_ = false;  // For measurement tool picking
+    bool wireframeMode_ = false;  // Toggle solid/wireframe
     
 #ifndef GEANTCAD_NO_VTK
     vtkSmartPointer<vtkRenderer> renderer_;
@@ -173,6 +179,9 @@ private:
     vtkSmartPointer<vtkActor> axisYActor_;
     vtkSmartPointer<vtkActor> axisZActor_;
     bool gridVisible_ = true;  // Enabled by default
+    
+    // World box (Geant4 world volume - 1m x 1m x 1m wireframe)
+    vtkSmartPointer<vtkActor> worldBoxActor_;
     double gridSpacing_ = 10.0; // mm - 5 squares = 50mm (typical object size)
     bool snapToGrid_ = false;
     

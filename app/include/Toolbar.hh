@@ -65,6 +65,9 @@ signals:
     void toggleMeasureTool();
     void toggleClippingPlanes();
     
+    // === Display ===
+    void toggleWireframe(bool enabled);
+    
     // === History ===
     void undoAction();
     void redoAction();
@@ -88,6 +91,7 @@ private:
     
     QAction* measureAction_ = nullptr;
     QAction* clippingAction_ = nullptr;
+    QAction* wireframeAction_ = nullptr;
 };
 
 } // namespace geantcad

@@ -170,7 +170,7 @@ void MainWindow::setupUI() {
     
     // Add ViewCube overlay in top-right corner
     viewCube_ = new ViewCube(viewport_);
-    viewCube_->setFixedSize(130, 160);  // Match new ViewCube size
+    viewCube_->setFixedSize(150, 200);  // Larger ViewCube
     viewCube_->setRenderer(viewport_->getRenderer());
     viewCube_->setCamera(viewport_->getCamera());
     viewCube_->show();
@@ -713,6 +713,9 @@ void MainWindow::connectSignals() {
     // === Analysis tools ===
     connect(toolbar_, &Toolbar::toggleClippingPlanes, this, &MainWindow::onToggleClippingPlanes);
     connect(toolbar_, &Toolbar::toggleMeasureTool, this, &MainWindow::onToggleMeasureTool);
+    
+    // === Display toggle ===
+    connect(toolbar_, &Toolbar::toggleWireframe, viewport_, &Viewport3D::setWireframeMode);
     
     // === Shape creation from toolbar ===
     connect(toolbar_, &Toolbar::createBox, this, [this]() {

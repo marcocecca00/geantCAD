@@ -149,6 +149,14 @@ static QIcon createToolIcon(const QString& tool, const QColor& color = QColor("#
         painter.drawEllipse(3, 6, 14, 8);
         painter.setBrush(color);
         painter.drawEllipse(8, 8, 4, 4);
+    } else if (tool == "wireframe") {
+        // Cube wireframe icon
+        painter.drawRect(5, 5, 10, 10);
+        painter.drawLine(5, 5, 8, 2);
+        painter.drawLine(15, 5, 18, 2);
+        painter.drawLine(8, 2, 18, 2);
+        painter.drawLine(18, 2, 18, 12);
+        painter.drawLine(15, 15, 18, 12);
     }
     
     return QIcon(pixmap);
@@ -351,6 +359,14 @@ void Toolbar::createAnalysisSection() {
     clippingAction_->setCheckable(true);
     clippingAction_->setToolTip("Clipping Plane");
     connect(clippingAction_, &QAction::triggered, this, &Toolbar::toggleClippingPlanes);
+    
+    addSeparator();
+    
+    // Wireframe toggle
+    wireframeAction_ = addAction(createToolIcon("wireframe"), "Wireframe");
+    wireframeAction_->setCheckable(true);
+    wireframeAction_->setToolTip("Toggle Wireframe Display");
+    connect(wireframeAction_, &QAction::toggled, this, &Toolbar::toggleWireframe);
 }
 
 QToolButton* Toolbar::createDropdownButton(const QIcon& icon, QMenu* menu) {

@@ -11,7 +11,7 @@ ViewCube::ViewCube(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedSize(130, 160);  // More space: cube centered, controls below
+    setFixedSize(150, 200);  // Larger: bigger cube + more space for controls
     setAttribute(Qt::WA_TranslucentBackground, true);
     
     // Colored faces like axis colors (more distinct)
@@ -27,7 +27,7 @@ ViewCube::ViewCube(QWidget* parent)
     
     // Initialize with isometric view orientation
     cameraOrientation_ = QQuaternion::fromEulerAngles(-30.0f, 45.0f, 0.0f);
-    cubeSize_ = 50.0f;  // Slightly larger cube
+    cubeSize_ = 60.0f;  // Larger cube for the camera
     updateFaces();
 }
 
@@ -223,12 +223,13 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
     }
     
     // === Bottom section: axis indicator on left, zoom buttons on right ===
-    float bottomY = height() - 35;
+    // More space between cube and controls
+    float bottomY = height() - 30;  // Controls at bottom
     
     // Small axis indicator (left side)
-    float axisX = 25;
-    float axisY = bottomY + 5;
-    float axisLen = 18;
+    float axisX = 30;
+    float axisY = bottomY;
+    float axisLen = 20;
     
     // Transform axes by camera orientation
     QVector3D xAxis = cameraOrientation_.rotatedVector(QVector3D(1, 0, 0));
@@ -248,21 +249,21 @@ void ViewCube::paintEvent(QPaintEvent* /*event*/) {
     painter.drawLine(QPointF(axisX, axisY), QPointF(axisX + zAxis.x() * axisLen, axisY - zAxis.y() * axisLen));
     
     // Axis labels
-    QFont smallFont("Segoe UI", 7);
+    QFont smallFont("Segoe UI", 8);
     smallFont.setBold(true);
     painter.setFont(smallFont);
     painter.setPen(QColor(230, 80, 80));
-    painter.drawText(QPointF(axisX + xAxis.x() * axisLen + 2, axisY - xAxis.y() * axisLen + 4), "X");
+    painter.drawText(QPointF(axisX + xAxis.x() * axisLen + 3, axisY - xAxis.y() * axisLen + 4), "X");
     painter.setPen(QColor(80, 210, 80));
-    painter.drawText(QPointF(axisX + yAxis.x() * axisLen + 2, axisY - yAxis.y() * axisLen + 4), "Y");
+    painter.drawText(QPointF(axisX + yAxis.x() * axisLen + 3, axisY - yAxis.y() * axisLen + 4), "Y");
     painter.setPen(QColor(80, 130, 230));
-    painter.drawText(QPointF(axisX + zAxis.x() * axisLen + 2, axisY - zAxis.y() * axisLen + 4), "Z");
+    painter.drawText(QPointF(axisX + zAxis.x() * axisLen + 3, axisY - zAxis.y() * axisLen + 4), "Z");
     
-    // === Zoom buttons (right side) ===
+    // === Zoom buttons (right side, more spaced) ===
     float zoomBtnY = bottomY;
-    float zoomInX = width() - 55;
+    float zoomInX = width() - 60;
     float zoomOutX = width() - 28;
-    float btnRadius = 10;
+    float btnRadius = 11;
     
     // Store button positions for click handling
     zoomInCenter_ = QPointF(zoomInX, zoomBtnY);

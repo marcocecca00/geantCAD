@@ -162,11 +162,13 @@ void Viewport3D::setupRenderer() {
     // Create modern grid
     createGrid();
     
+    // Create world box (Geant4 world volume - 1m x 1m x 1m wireframe)
+    createWorldBox();
+    
     // Create manipulation gizmos
     createGizmos();
     
-    // Set up camera VERY close for viewing 50mm (5cm) objects
-    // Camera at ~170mm distance to fill view with 50mm object
+    // Set up camera for CAD-like view
     vtkCamera* camera = renderer_->GetActiveCamera();
     camera->SetPosition(100, 100, 80);   // Close isometric view
     camera->SetFocalPoint(0, 0, 0);      // Look at origin
@@ -174,10 +176,11 @@ void Viewport3D::setupRenderer() {
     
     // Configure camera for better interaction
     camera->SetClippingRange(0.1, 50000.0); // Wide clipping range
-    camera->SetViewAngle(30.0); // Narrower FOV = more zoomed in
+    camera->SetViewAngle(30.0);
     
-    // Force the camera to use this exact position without auto-adjustment
-    camera->SetParallelScale(60.0); // For orthographic mode
+    // Set orthographic (parallel) projection as default - standard CAD behavior
+    camera->SetParallelProjection(true);
+    camera->SetParallelScale(80.0);  // Adjust for good initial view
 }
 
 void Viewport3D::setupInteractor() {
@@ -477,6 +480,56 @@ void Viewport3D::updateGrid() {
         if (label) {
             label->SetVisibility(gridVisible_);
         }
+    }
+}
+
+void Viewport3D::createWorldBox() {
+    if (!renderer_) return;
+    
+    // Remove existing world box
+    if (worldBoxActor_) {
+        renderer_->RemoveActor(worldBoxActor_);
+        worldBoxActor_ = nullptr;
+    }
+    
+    // Create a 1m x 1m x 1m wireframe box centered at origin
+    // This represents the Geant4 world volume (logical volume)
+    const double worldSize = 500.0;  // Half-size = 500mm = 0.5m (total 1m)
+    
+    vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
+    cube->SetBounds(-worldSize, worldSize, -worldSize, worldSize, 0, worldSize * 2);  // 1m x 1m x 1m, bottom at Z=0
+    
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(cube->GetOutputPort());
+    
+    worldBoxActor_ = vtkSmartPointer<vtkActor>::New();
+    worldBoxActor_->SetMapper(mapper);
+    worldBoxActor_->GetProperty()->SetRepresentationToWireframe();  // Always wireframe
+    worldBoxActor_->GetProperty()->SetColor(0.5, 0.5, 0.6);  // Light gray
+    worldBoxActor_->GetProperty()->SetLineWidth(1.0);
+    worldBoxActor_->GetProperty()->SetOpacity(0.5);
+    worldBoxActor_->SetPickable(false);  // Not selectable
+    
+    renderer_->AddActor(worldBoxActor_);
+}
+
+void Viewport3D::setWireframeMode(bool enabled) {
+    wireframeMode_ = enabled;
+    
+    // Update all object actors
+    for (auto& [node, actor] : actors_) {
+        if (actor) {
+            if (wireframeMode_) {
+                actor->GetProperty()->SetRepresentationToWireframe();
+                actor->GetProperty()->SetLineWidth(1.5);
+            } else {
+                actor->GetProperty()->SetRepresentationToSurface();
+            }
+        }
+    }
+    
+    if (renderWindow_) {
+        renderWindow_->Render();
     }
 }
 #endif
@@ -821,7 +874,7 @@ void Viewport3D::setCommandStack(CommandStack* commandStack) {
 
 void Viewport3D::setInteractionMode(InteractionMode mode) {
     if (interactionMode_ != mode) {
-        interactionMode_ = mode;
+    interactionMode_ = mode;
         
         // Deactivate measurement mode when switching tools
         if (mode != InteractionMode::Select && measurementMode_) {
@@ -893,7 +946,7 @@ void Viewport3D::keyPressEvent(QKeyEvent* event) {
         case Qt::Key_T:
             setInteractionMode(InteractionMode::Scale);
             emit viewChanged();
-            break;
+                break;
             
         // === Axis constraints (during Move/Rotate/Scale) ===
         case Qt::Key_X:
@@ -1698,22 +1751,22 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
         }
         
         QAction* moveAction = contextMenu.addAction("Move (W)");
-        connect(moveAction, &QAction::triggered, [this]() {
-            setInteractionMode(InteractionMode::Move);
-            emit viewChanged();
-        });
-        
+    connect(moveAction, &QAction::triggered, [this]() {
+        setInteractionMode(InteractionMode::Move);
+        emit viewChanged();
+    });
+    
         QAction* rotateAction = contextMenu.addAction("Rotate (E)");
-        connect(rotateAction, &QAction::triggered, [this]() {
-            setInteractionMode(InteractionMode::Rotate);
-            emit viewChanged();
-        });
-        
-        QAction* scaleAction = contextMenu.addAction("Scale (T)");
-        connect(scaleAction, &QAction::triggered, [this]() {
-            setInteractionMode(InteractionMode::Scale);
-            emit viewChanged();
-        });
+    connect(rotateAction, &QAction::triggered, [this]() {
+        setInteractionMode(InteractionMode::Rotate);
+        emit viewChanged();
+    });
+    
+    QAction* scaleAction = contextMenu.addAction("Scale (T)");
+    connect(scaleAction, &QAction::triggered, [this]() {
+        setInteractionMode(InteractionMode::Scale);
+        emit viewChanged();
+    });
         
         // Scale options submenu
         QMenu* scaleMenu = contextMenu.addMenu("Scale Options");
@@ -1722,13 +1775,13 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
         propAction->setChecked(proportionalScaling_);
         connect(propAction, &QAction::triggered, [this](bool checked) {
             proportionalScaling_ = checked;
-        });
-        
-        contextMenu.addSeparator();
-        
+    });
+    
+    contextMenu.addSeparator();
+    
         QAction* frameAction = contextMenu.addAction("Frame Object (F)");
-        connect(frameAction, &QAction::triggered, this, &Viewport3D::frameSelection);
-        
+    connect(frameAction, &QAction::triggered, this, &Viewport3D::frameSelection);
+    
         contextMenu.addSeparator();
         
         QAction* duplicateAction = contextMenu.addAction("Duplicate");
@@ -1750,8 +1803,8 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
         QMenu* viewMenu = contextMenu.addMenu("View");
         
         QAction* resetAction = viewMenu->addAction("Reset View (Home)");
-        connect(resetAction, &QAction::triggered, this, &Viewport3D::resetView);
-        
+    connect(resetAction, &QAction::triggered, this, &Viewport3D::resetView);
+    
         QAction* frontAction = viewMenu->addAction("Front");
         connect(frontAction, &QAction::triggered, [this]() { setStandardView(StandardView::Front); });
         
