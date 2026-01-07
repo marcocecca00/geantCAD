@@ -44,6 +44,8 @@
 #include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QLineEdit>
+#include <QLabel>
 using namespace geantcad;
 
 namespace {
@@ -1230,55 +1232,120 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
 
 // === Boolean Operations ===
 
-void MainWindow::onBooleanUnion() {
-    // Get selected nodes - need at least 2 overlapping objects
-    VolumeNode* selected = sceneGraph_->getSelected();
-    if (!selected) {
-        statusBar_->showMessage("Select at least 2 overlapping objects for boolean union", 3000);
+void MainWindow::performBooleanOperation(BooleanOperation operation) {
+    VolumeNode* solidA = sceneGraph_->getSelected();
+    if (!solidA || !solidA->getShape()) {
+        statusBar_->showMessage("Select an object first (Solid A)", 3000);
         return;
     }
     
-    // TODO: Implement multi-selection for boolean operations
-    // For now, show dialog to select second object
-    QMessageBox::information(this, "Boolean Union", 
-        "Boolean Union: Select two overlapping objects.\n\n"
-        "This operation combines two solids into one.\n"
-        "Currently, use the hierarchy panel to select objects.\n\n"
-        "Note: Boolean operations require VTK's vtkBooleanOperationPolyDataFilter.");
+    // Collect all available volumes for second operand
+    std::vector<VolumeNode*> availableVolumes;
+    sceneGraph_->traverse([&](VolumeNode* node) {
+        if (node && node != solidA && node->getShape() && 
+            node->getShape()->getType() != ShapeType::BooleanSolid) {
+            availableVolumes.push_back(node);
+        }
+    });
     
-    statusBar_->showMessage("Boolean Union - Feature in development", 2000);
+    if (availableVolumes.empty()) {
+        statusBar_->showMessage("Need at least two objects for boolean operation", 3000);
+        return;
+    }
+    
+    // Dialog to select second object and offset
+    QDialog dialog(this);
+    const char* opNames[] = {"Union", "Subtraction", "Intersection"};
+    dialog.setWindowTitle(QString("Boolean %1").arg(opNames[static_cast<int>(operation)]));
+    dialog.setModal(true);
+    
+    QFormLayout* layout = new QFormLayout(&dialog);
+    
+    // Info label
+    layout->addRow(new QLabel(QString("Solid A: <b>%1</b>").arg(QString::fromStdString(solidA->getName()))));
+    
+    // Second object selector
+    QComboBox* solidBCombo = new QComboBox(&dialog);
+    for (auto* vol : availableVolumes) {
+        solidBCombo->addItem(QString::fromStdString(vol->getName()));
+    }
+    layout->addRow("Solid B:", solidBCombo);
+    
+    // Relative position (B relative to A)
+    QLabel* posLabel = new QLabel("Relative Position of B (mm):");
+    layout->addRow(posLabel);
+    
+    QDoubleSpinBox* relPosX = new QDoubleSpinBox(&dialog);
+    relPosX->setRange(-1000, 1000);
+    relPosX->setValue(0);
+    layout->addRow("  X:", relPosX);
+    
+    QDoubleSpinBox* relPosY = new QDoubleSpinBox(&dialog);
+    relPosY->setRange(-1000, 1000);
+    relPosY->setValue(0);
+    layout->addRow("  Y:", relPosY);
+    
+    QDoubleSpinBox* relPosZ = new QDoubleSpinBox(&dialog);
+    relPosZ->setRange(-1000, 1000);
+    relPosZ->setValue(0);
+    layout->addRow("  Z:", relPosZ);
+    
+    // Name for result
+    QLineEdit* resultName = new QLineEdit(&dialog);
+    resultName->setText(QString::fromStdString(solidA->getName()) + "_" + 
+                        opNames[static_cast<int>(operation)]);
+    layout->addRow("Result Name:", resultName);
+    
+    QDialogButtonBox* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    
+    if (dialog.exec() != QDialog::Accepted) return;
+    
+    // Get selected second volume
+    int idx = solidBCombo->currentIndex();
+    if (idx < 0 || idx >= static_cast<int>(availableVolumes.size())) return;
+    VolumeNode* solidB = availableVolumes[idx];
+    
+    // Create the boolean solid shape
+    auto boolShape = makeBooleanSolid(
+        operation,
+        solidA->getName(),
+        solidB->getName(),
+        relPosX->value(),
+        relPosY->value(),
+        relPosZ->value(),
+        0.0, 0.0, 0.0  // No rotation for now
+    );
+    
+    // Create new volume node with the boolean shape
+    VolumeNode* resultNode = sceneGraph_->createVolume(resultName->text().toStdString());
+    resultNode->setShape(std::move(boolShape));
+    resultNode->setMaterial(solidA->getMaterial());  // Use material from solid A
+    
+    // Position at solid A's position
+    resultNode->getTransform().setTranslation(solidA->getTransform().getTranslation());
+    
+    // Update viewport
+    viewport_->refresh();
+    
+    statusBar_->showMessage(QString("Created boolean %1: %2")
+        .arg(opNames[static_cast<int>(operation)])
+        .arg(resultName->text()), 3000);
+}
+
+void MainWindow::onBooleanUnion() {
+    performBooleanOperation(BooleanOperation::Union);
 }
 
 void MainWindow::onBooleanIntersection() {
-    VolumeNode* selected = sceneGraph_->getSelected();
-    if (!selected) {
-        statusBar_->showMessage("Select at least 2 overlapping objects for intersection", 3000);
-        return;
-    }
-    
-    QMessageBox::information(this, "Boolean Intersection", 
-        "Boolean Intersection: Select two overlapping objects.\n\n"
-        "This operation keeps only the region where both solids overlap.\n"
-        "Currently, use the hierarchy panel to select objects.\n\n"
-        "Note: Boolean operations require VTK's vtkBooleanOperationPolyDataFilter.");
-    
-    statusBar_->showMessage("Boolean Intersection - Feature in development", 2000);
+    performBooleanOperation(BooleanOperation::Intersection);
 }
 
 void MainWindow::onBooleanSubtraction() {
-    VolumeNode* selected = sceneGraph_->getSelected();
-    if (!selected) {
-        statusBar_->showMessage("Select 2 objects: first object - second object", 3000);
-        return;
-    }
-    
-    QMessageBox::information(this, "Boolean Subtraction", 
-        "Boolean Subtraction: Select two objects.\n\n"
-        "This operation subtracts the second object from the first.\n"
-        "Currently, use the hierarchy panel to select objects.\n\n"
-        "Note: Boolean operations require VTK's vtkBooleanOperationPolyDataFilter.");
-    
-    statusBar_->showMessage("Boolean Subtraction - Feature in development", 2000);
+    performBooleanOperation(BooleanOperation::Subtraction);
 }
 
 // === Pattern Tool ===

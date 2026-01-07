@@ -15,7 +15,15 @@ enum class ShapeType {
     Cone,
     Trd,
     Polycone,
-    Polyhedra
+    Polyhedra,
+    BooleanSolid  // For G4UnionSolid, G4SubtractionSolid, G4IntersectionSolid
+};
+
+// Boolean operation types (maps to G4 boolean solids)
+enum class BooleanOperation {
+    Union,        // G4UnionSolid
+    Subtraction,  // G4SubtractionSolid  
+    Intersection  // G4IntersectionSolid
 };
 
 /**
@@ -99,8 +107,33 @@ struct PolyhedraParams {
     std::vector<double> rmax;      // outer radius at each z plane (mm)
 };
 
+/**
+ * Parametri per BooleanSolid
+ * Rappresenta G4UnionSolid, G4SubtractionSolid, G4IntersectionSolid
+ * Le due shape vengono combinate con l'operazione specificata
+ */
+struct BooleanParams {
+    BooleanOperation operation = BooleanOperation::Union;
+    
+    // Operand shapes (stored as unique_ptr in the actual Shape objects)
+    // Here we store references by name/ID for serialization
+    std::string solidA_name;  // First operand (base solid)
+    std::string solidB_name;  // Second operand (tool solid)
+    
+    // Relative transform of solidB with respect to solidA
+    // Position (translation) in mm
+    double relPosX = 0.0;
+    double relPosY = 0.0;
+    double relPosZ = 0.0;
+    
+    // Rotation (Euler angles) in degrees
+    double relRotX = 0.0;
+    double relRotY = 0.0;
+    double relRotZ = 0.0;
+};
+
 // Variant per i parametri shape
-using ShapeParams = std::variant<BoxParams, TubeParams, SphereParams, ConeParams, TrdParams, PolyconeParams, PolyhedraParams>;
+using ShapeParams = std::variant<BoxParams, TubeParams, SphereParams, ConeParams, TrdParams, PolyconeParams, PolyhedraParams, BooleanParams>;
 
 /**
  * Classe base astratta per le shape geometriche.
@@ -149,6 +182,34 @@ std::unique_ptr<Shape> makeCone(double rmin1, double rmax1, double rmin2, double
 std::unique_ptr<Shape> makeTrd(double dx1, double dx2, double dy1, double dy2, double dz);
 std::unique_ptr<Shape> makePolycone(double sphi, double dphi, const std::vector<double>& zPlanes, const std::vector<double>& rmin, const std::vector<double>& rmax);
 std::unique_ptr<Shape> makePolyhedra(int numSides, double sphi, double dphi, const std::vector<double>& zPlanes, const std::vector<double>& rmin, const std::vector<double>& rmax);
+
+// Boolean solid factory
+std::unique_ptr<Shape> makeBooleanSolid(
+    BooleanOperation operation,
+    const std::string& solidA_name,
+    const std::string& solidB_name,
+    double relPosX = 0.0, double relPosY = 0.0, double relPosZ = 0.0,
+    double relRotX = 0.0, double relRotY = 0.0, double relRotZ = 0.0
+);
+
+// Helper to get operation name for Geant4 export
+inline const char* booleanOperationToG4Class(BooleanOperation op) {
+    switch (op) {
+        case BooleanOperation::Union: return "G4UnionSolid";
+        case BooleanOperation::Subtraction: return "G4SubtractionSolid";
+        case BooleanOperation::Intersection: return "G4IntersectionSolid";
+    }
+    return "G4UnionSolid";
+}
+
+inline const char* booleanOperationToString(BooleanOperation op) {
+    switch (op) {
+        case BooleanOperation::Union: return "union";
+        case BooleanOperation::Subtraction: return "subtraction";
+        case BooleanOperation::Intersection: return "intersection";
+    }
+    return "union";
+}
 
 } // namespace geantcad
 

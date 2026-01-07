@@ -199,6 +199,58 @@ namespace {
                 }
                 break;
             }
+            case ShapeType::BooleanSolid: {
+                if (auto* params = shape->getParamsAs<BooleanParams>()) {
+                    // GDML boolean solid syntax:
+                    // <union|subtraction|intersection name="...">
+                    //   <first ref="solidA"/>
+                    //   <second ref="solidB">
+                    //     <position .../>
+                    //     <rotation .../>
+                    //   </second>
+                    // </union|subtraction|intersection>
+                    
+                    const char* opTag = nullptr;
+                    switch (params->operation) {
+                        case BooleanOperation::Union: opTag = "union"; break;
+                        case BooleanOperation::Subtraction: opTag = "subtraction"; break;
+                        case BooleanOperation::Intersection: opTag = "intersection"; break;
+                    }
+                    
+                    std::string solidA_ref = sanitizeName(params->solidA_name) + "_shape";
+                    std::string solidB_ref = sanitizeName(params->solidB_name) + "_shape";
+                    std::string posName = shapeName + "_relpos";
+                    std::string rotName = shapeName + "_relrot";
+                    
+                    // Write relative position/rotation
+                    os << "    <position name=\"" << posName << "\" unit=\"cm\" "
+                       << "x=\"" << formatDouble(mmToCm(params->relPosX)) << "\" "
+                       << "y=\"" << formatDouble(mmToCm(params->relPosY)) << "\" "
+                       << "z=\"" << formatDouble(mmToCm(params->relPosZ)) << "\"/>\n";
+                    
+                    bool hasRot = (std::abs(params->relRotX) > 0.001 || 
+                                   std::abs(params->relRotY) > 0.001 || 
+                                   std::abs(params->relRotZ) > 0.001);
+                    if (hasRot) {
+                        os << "    <rotation name=\"" << rotName << "\" unit=\"deg\" "
+                           << "x=\"" << formatDouble(params->relRotX) << "\" "
+                           << "y=\"" << formatDouble(params->relRotY) << "\" "
+                           << "z=\"" << formatDouble(params->relRotZ) << "\"/>\n";
+                    }
+                    
+                    // Write boolean solid
+                    os << "    <" << opTag << " name=\"" << shapeName << "\">\n";
+                    os << "      <first ref=\"" << solidA_ref << "\"/>\n";
+                    os << "      <second ref=\"" << solidB_ref << "\">\n";
+                    os << "        <positionref ref=\"" << posName << "\"/>\n";
+                    if (hasRot) {
+                        os << "        <rotationref ref=\"" << rotName << "\"/>\n";
+                    }
+                    os << "      </second>\n";
+                    os << "    </" << opTag << ">\n";
+                }
+                break;
+            }
             default:
                 break;
         }

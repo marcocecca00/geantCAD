@@ -84,6 +84,22 @@ nlohmann::json Shape::toJson() const {
             }
             break;
         }
+        case ShapeType::BooleanSolid: {
+            if (auto* p = std::get_if<BooleanParams>(&params_)) {
+                j["params"] = {
+                    {"operation", static_cast<int>(p->operation)},
+                    {"solidA_name", p->solidA_name},
+                    {"solidB_name", p->solidB_name},
+                    {"relPosX", p->relPosX},
+                    {"relPosY", p->relPosY},
+                    {"relPosZ", p->relPosZ},
+                    {"relRotX", p->relRotX},
+                    {"relRotY", p->relRotY},
+                    {"relRotZ", p->relRotZ}
+                };
+            }
+            break;
+        }
         default:
             break;
     }
@@ -143,6 +159,20 @@ std::unique_ptr<Shape> Shape::fromJson(const nlohmann::json& j) {
                 p["zPlanes"].get<std::vector<double>>(),
                 p["rmin"].get<std::vector<double>>(),
                 p["rmax"].get<std::vector<double>>()
+            );
+        }
+        case ShapeType::BooleanSolid: {
+            auto p = j["params"];
+            return makeBooleanSolid(
+                static_cast<BooleanOperation>(p.value("operation", 0)),
+                p["solidA_name"],
+                p["solidB_name"],
+                p.value("relPosX", 0.0),
+                p.value("relPosY", 0.0),
+                p.value("relPosZ", 0.0),
+                p.value("relRotX", 0.0),
+                p.value("relRotY", 0.0),
+                p.value("relRotZ", 0.0)
             );
         }
         default:
@@ -238,6 +268,30 @@ std::unique_ptr<Shape> makePolyhedra(int numSides, double sphi, double dphi, con
     params.rmin = rmin;
     params.rmax = rmax;
     return std::unique_ptr<Shape>(new Shape(ShapeType::Polyhedra, "Polyhedra", params));
+}
+
+std::unique_ptr<Shape> makeBooleanSolid(
+    BooleanOperation operation,
+    const std::string& solidA_name,
+    const std::string& solidB_name,
+    double relPosX, double relPosY, double relPosZ,
+    double relRotX, double relRotY, double relRotZ)
+{
+    BooleanParams params;
+    params.operation = operation;
+    params.solidA_name = solidA_name;
+    params.solidB_name = solidB_name;
+    params.relPosX = relPosX;
+    params.relPosY = relPosY;
+    params.relPosZ = relPosZ;
+    params.relRotX = relRotX;
+    params.relRotY = relRotY;
+    params.relRotZ = relRotZ;
+    
+    std::string name = booleanOperationToString(operation);
+    name += "_" + solidA_name + "_" + solidB_name;
+    
+    return std::unique_ptr<Shape>(new Shape(ShapeType::BooleanSolid, name, params));
 }
 
 } // namespace geantcad

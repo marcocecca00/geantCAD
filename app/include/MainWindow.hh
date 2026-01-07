@@ -60,6 +60,7 @@ private slots:
     void onBooleanUnion();
     void onBooleanIntersection();
     void onBooleanSubtraction();
+    void performBooleanOperation(BooleanOperation operation);
     
     // Pattern
     void onPatternAlongLine();

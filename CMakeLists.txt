@@ -198,6 +198,8 @@ find_package(VTK QUIET COMPONENTS
     CommonCore
     CommonDataModel
     FiltersSources
+    FiltersGeneral
+    FiltersGeometry
     InteractionStyle
     InteractionWidgets
     RenderingCore
