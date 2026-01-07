@@ -157,6 +157,33 @@ static QIcon createToolIcon(const QString& tool, const QColor& color = QColor("#
         painter.drawLine(8, 2, 18, 2);
         painter.drawLine(18, 2, 18, 12);
         painter.drawLine(15, 15, 18, 12);
+    } else if (tool == "bool_union") {
+        // Two overlapping circles for union
+        painter.drawEllipse(2, 5, 10, 10);
+        painter.drawEllipse(8, 5, 10, 10);
+        painter.setPen(QPen(QColor("#4ec9b0"), 2));
+        painter.drawLine(13, 2, 17, 2);
+        painter.drawLine(15, 0, 15, 4);
+    } else if (tool == "bool_intersect") {
+        // Two overlapping circles with center highlighted
+        painter.drawEllipse(2, 5, 10, 10);
+        painter.drawEllipse(8, 5, 10, 10);
+        painter.setBrush(QColor("#4ec9b0"));
+        painter.drawEllipse(7, 8, 6, 6);
+    } else if (tool == "bool_subtract") {
+        // Two circles with minus
+        painter.drawEllipse(2, 5, 10, 10);
+        painter.drawEllipse(8, 5, 10, 10);
+        painter.setPen(QPen(QColor("#f14c4c"), 2));
+        painter.drawLine(13, 2, 17, 2);
+    } else if (tool == "pattern") {
+        // Multiple dots in a line
+        painter.setBrush(color);
+        painter.drawEllipse(2, 8, 4, 4);
+        painter.drawEllipse(8, 8, 4, 4);
+        painter.drawEllipse(14, 8, 4, 4);
+        painter.setPen(QPen(color, 1, Qt::DashLine));
+        painter.drawLine(4, 10, 16, 10);
     }
     
     return QIcon(pixmap);
@@ -199,6 +226,8 @@ void Toolbar::setupActions() {
     createShapeSection();
     addSeparator();
     createEditSection();
+    addSeparator();
+    createBooleanSection();
     addSeparator();
     createViewSection();
     addSeparator();
@@ -345,6 +374,32 @@ void Toolbar::createEditSection() {
     QToolButton* groupBtn = createDropdownButton(createToolIcon("group"), groupMenu);
     groupBtn->setToolTip("Group/Ungroup");
     addWidget(groupBtn);
+}
+
+void Toolbar::createBooleanSection() {
+    // Boolean operations dropdown
+    QMenu* boolMenu = new QMenu(this);
+    
+    QAction* unionAction = boolMenu->addAction(createToolIcon("bool_union"), "Union");
+    unionAction->setToolTip("Boolean Union - Combine two overlapping solids");
+    connect(unionAction, &QAction::triggered, this, &Toolbar::booleanUnion);
+    
+    QAction* intersectAction = boolMenu->addAction(createToolIcon("bool_intersect"), "Intersection");
+    intersectAction->setToolTip("Boolean Intersection - Keep only overlapping region");
+    connect(intersectAction, &QAction::triggered, this, &Toolbar::booleanIntersection);
+    
+    QAction* subtractAction = boolMenu->addAction(createToolIcon("bool_subtract"), "Subtraction");
+    subtractAction->setToolTip("Boolean Subtraction - Remove second solid from first");
+    connect(subtractAction, &QAction::triggered, this, &Toolbar::booleanSubtraction);
+    
+    QToolButton* boolBtn = createDropdownButton(createToolIcon("bool_union"), boolMenu);
+    boolBtn->setToolTip("Boolean Operations");
+    addWidget(boolBtn);
+    
+    // Pattern tool
+    QAction* patternAction = addAction(createToolIcon("pattern"), "Pattern");
+    patternAction->setToolTip("Pattern Along Line/Curve");
+    connect(patternAction, &QAction::triggered, this, &Toolbar::patternAlongLine);
 }
 
 void Toolbar::createAnalysisSection() {

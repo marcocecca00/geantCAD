@@ -492,12 +492,12 @@ void Viewport3D::createWorldBox() {
         worldBoxActor_ = nullptr;
     }
     
-    // Create a 1m x 1m x 1m wireframe box centered at origin
+    // Create a 50cm x 50cm x 50cm wireframe box centered at origin
     // This represents the Geant4 world volume (logical volume)
-    const double worldSize = 500.0;  // Half-size = 500mm = 0.5m (total 1m)
+    const double worldSize = 250.0;  // Half-size = 250mm = 25cm (total 50cm)
     
     vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
-    cube->SetBounds(-worldSize, worldSize, -worldSize, worldSize, 0, worldSize * 2);  // 1m x 1m x 1m, bottom at Z=0
+    cube->SetBounds(-worldSize, worldSize, -worldSize, worldSize, 0, worldSize * 2);  // 50cm x 50cm x 50cm, bottom at Z=0
     
     vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputConnection(cube->GetOutputPort());
@@ -577,47 +577,54 @@ void Viewport3D::setStandardView(StandardView view) {
     if (!renderer_ || !getCamera()) return;
     
     vtkCamera* camera = getCamera();
-    double distance = 500.0; // Default distance
+    
+    // Preserve current zoom level by getting current distance from focal point
+    double pos[3], focal[3];
+    camera->GetPosition(pos);
+    camera->GetFocalPoint(focal);
+    double distance = std::sqrt(
+        (pos[0] - focal[0]) * (pos[0] - focal[0]) +
+        (pos[1] - focal[1]) * (pos[1] - focal[1]) +
+        (pos[2] - focal[2]) * (pos[2] - focal[2])
+    );
+    if (distance < 10.0) distance = 200.0; // Minimum fallback
     
     switch (view) {
         case StandardView::Front: // +Y
-            camera->SetPosition(0, distance, 0);
-            camera->SetFocalPoint(0, 0, 0);
+            camera->SetPosition(focal[0], focal[1] + distance, focal[2]);
             camera->SetViewUp(0, 0, 1);
             break;
         case StandardView::Back: // -Y
-            camera->SetPosition(0, -distance, 0);
-            camera->SetFocalPoint(0, 0, 0);
+            camera->SetPosition(focal[0], focal[1] - distance, focal[2]);
             camera->SetViewUp(0, 0, 1);
             break;
         case StandardView::Left: // +X
-            camera->SetPosition(distance, 0, 0);
-            camera->SetFocalPoint(0, 0, 0);
+            camera->SetPosition(focal[0] + distance, focal[1], focal[2]);
             camera->SetViewUp(0, 0, 1);
             break;
         case StandardView::Right: // -X
-            camera->SetPosition(-distance, 0, 0);
-            camera->SetFocalPoint(0, 0, 0);
+            camera->SetPosition(focal[0] - distance, focal[1], focal[2]);
             camera->SetViewUp(0, 0, 1);
             break;
         case StandardView::Top: // +Z
-            camera->SetPosition(0, 0, distance);
-            camera->SetFocalPoint(0, 0, 0);
+            camera->SetPosition(focal[0], focal[1], focal[2] + distance);
             camera->SetViewUp(0, 1, 0);
             break;
         case StandardView::Bottom: // -Z
-            camera->SetPosition(0, 0, -distance);
-            camera->SetFocalPoint(0, 0, 0);
+            camera->SetPosition(focal[0], focal[1], focal[2] - distance);
             camera->SetViewUp(0, 1, 0);
             break;
         case StandardView::Isometric: // 45° isometric
-            camera->SetPosition(distance, distance, distance);
-            camera->SetFocalPoint(0, 0, 0);
-            camera->SetViewUp(0, 0, 1);
+            {
+                double d = distance / std::sqrt(3.0);
+                camera->SetPosition(focal[0] + d, focal[1] + d, focal[2] + d);
+                camera->SetViewUp(0, 0, 1);
+            }
             break;
     }
     
-    renderer_->ResetCamera();
+    // Don't call ResetCamera() - preserve zoom level
+    renderer_->ResetCameraClippingRange();
     renderWindow_->Render();
     emit viewChanged();
 #endif

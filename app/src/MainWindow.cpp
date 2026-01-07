@@ -38,6 +38,12 @@
 #include <QDir>
 #include <QGroupBox>
 #include <QPainter>
+#include <QDialog>
+#include <QFormLayout>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QComboBox>
+#include <QDialogButtonBox>
 using namespace geantcad;
 
 namespace {
@@ -691,14 +697,6 @@ void MainWindow::connectSignals() {
     connect(toolbar_, &Toolbar::redoAction, this, &MainWindow::onRedo);
     
     // === View actions from toolbar ===
-    connect(toolbar_, &Toolbar::viewFront, this, &MainWindow::onViewFront);
-    connect(toolbar_, &Toolbar::viewBack, this, &MainWindow::onViewBack);
-    connect(toolbar_, &Toolbar::viewLeft, this, &MainWindow::onViewLeft);
-    connect(toolbar_, &Toolbar::viewRight, this, &MainWindow::onViewRight);
-    connect(toolbar_, &Toolbar::viewTop, this, &MainWindow::onViewTop);
-    connect(toolbar_, &Toolbar::viewBottom, this, &MainWindow::onViewBottom);
-    connect(toolbar_, &Toolbar::viewIsometric, this, &MainWindow::onViewIsometric);
-    
     connect(toolbar_, &Toolbar::viewFrameSelection, this, [this]() {
         viewport_->frameSelection();
         statusBar_->showMessage("Framed selection", 1000);
@@ -716,6 +714,14 @@ void MainWindow::connectSignals() {
     
     // === Display toggle ===
     connect(toolbar_, &Toolbar::toggleWireframe, viewport_, &Viewport3D::setWireframeMode);
+    
+    // === Boolean operations ===
+    connect(toolbar_, &Toolbar::booleanUnion, this, &MainWindow::onBooleanUnion);
+    connect(toolbar_, &Toolbar::booleanIntersection, this, &MainWindow::onBooleanIntersection);
+    connect(toolbar_, &Toolbar::booleanSubtraction, this, &MainWindow::onBooleanSubtraction);
+    
+    // === Pattern tool ===
+    connect(toolbar_, &Toolbar::patternAlongLine, this, &MainWindow::onPatternAlongLine);
     
     // === Shape creation from toolbar ===
     connect(toolbar_, &Toolbar::createBox, this, [this]() {
@@ -1220,6 +1226,143 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
             }
     
     return QMainWindow::eventFilter(obj, event);
+}
+
+// === Boolean Operations ===
+
+void MainWindow::onBooleanUnion() {
+    // Get selected nodes - need at least 2 overlapping objects
+    VolumeNode* selected = sceneGraph_->getSelected();
+    if (!selected) {
+        statusBar_->showMessage("Select at least 2 overlapping objects for boolean union", 3000);
+        return;
+    }
+    
+    // TODO: Implement multi-selection for boolean operations
+    // For now, show dialog to select second object
+    QMessageBox::information(this, "Boolean Union", 
+        "Boolean Union: Select two overlapping objects.\n\n"
+        "This operation combines two solids into one.\n"
+        "Currently, use the hierarchy panel to select objects.\n\n"
+        "Note: Boolean operations require VTK's vtkBooleanOperationPolyDataFilter.");
+    
+    statusBar_->showMessage("Boolean Union - Feature in development", 2000);
+}
+
+void MainWindow::onBooleanIntersection() {
+    VolumeNode* selected = sceneGraph_->getSelected();
+    if (!selected) {
+        statusBar_->showMessage("Select at least 2 overlapping objects for intersection", 3000);
+        return;
+    }
+    
+    QMessageBox::information(this, "Boolean Intersection", 
+        "Boolean Intersection: Select two overlapping objects.\n\n"
+        "This operation keeps only the region where both solids overlap.\n"
+        "Currently, use the hierarchy panel to select objects.\n\n"
+        "Note: Boolean operations require VTK's vtkBooleanOperationPolyDataFilter.");
+    
+    statusBar_->showMessage("Boolean Intersection - Feature in development", 2000);
+}
+
+void MainWindow::onBooleanSubtraction() {
+    VolumeNode* selected = sceneGraph_->getSelected();
+    if (!selected) {
+        statusBar_->showMessage("Select 2 objects: first object - second object", 3000);
+        return;
+    }
+    
+    QMessageBox::information(this, "Boolean Subtraction", 
+        "Boolean Subtraction: Select two objects.\n\n"
+        "This operation subtracts the second object from the first.\n"
+        "Currently, use the hierarchy panel to select objects.\n\n"
+        "Note: Boolean operations require VTK's vtkBooleanOperationPolyDataFilter.");
+    
+    statusBar_->showMessage("Boolean Subtraction - Feature in development", 2000);
+}
+
+// === Pattern Tool ===
+
+void MainWindow::onPatternAlongLine() {
+    VolumeNode* selected = sceneGraph_->getSelected();
+    if (!selected) {
+        statusBar_->showMessage("Select an object to create a pattern", 3000);
+        return;
+    }
+    
+    // Simple dialog for pattern parameters
+    QDialog dialog(this);
+    dialog.setWindowTitle("Pattern Along Line");
+    dialog.setModal(true);
+    
+    QFormLayout* layout = new QFormLayout(&dialog);
+    
+    QSpinBox* countSpin = new QSpinBox(&dialog);
+    countSpin->setRange(2, 100);
+    countSpin->setValue(5);
+    layout->addRow("Number of copies:", countSpin);
+    
+    QDoubleSpinBox* distanceSpin = new QDoubleSpinBox(&dialog);
+    distanceSpin->setRange(1.0, 1000.0);
+    distanceSpin->setValue(60.0);
+    distanceSpin->setSuffix(" mm");
+    layout->addRow("Distance between:", distanceSpin);
+    
+    QComboBox* axisCmb = new QComboBox(&dialog);
+    axisCmb->addItems({"X axis", "Y axis", "Z axis"});
+    layout->addRow("Pattern along:", axisCmb);
+    
+    QDialogButtonBox* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    
+    if (dialog.exec() != QDialog::Accepted) return;
+    
+    int count = countSpin->value();
+    double distance = distanceSpin->value();
+    int axis = axisCmb->currentIndex();  // 0=X, 1=Y, 2=Z
+    
+    // Get current position of selected object
+    const Transform& baseTransform = selected->getTransform();
+    QVector3D basePos = baseTransform.getTranslation();
+    
+    // Create copies along the selected axis
+    for (int i = 1; i < count; ++i) {
+        // Calculate offset
+        QVector3D offset(0, 0, 0);
+        if (axis == 0) offset.setX(i * distance);
+        else if (axis == 1) offset.setY(i * distance);
+        else offset.setZ(i * distance);
+        
+        // Create new node
+        VolumeNode* newNode = sceneGraph_->createVolume(
+            selected->getName() + "_" + std::to_string(i));
+        
+        // Copy shape (clone by recreating from params)
+        if (selected->getShape()) {
+            Shape* srcShape = selected->getShape();
+            auto newShape = std::make_unique<Shape>(
+                srcShape->getType(), 
+                srcShape->getName(), 
+                srcShape->getParams());
+            newNode->setShape(std::move(newShape));
+        }
+        newNode->setMaterial(selected->getMaterial());
+        
+        // Set position with offset
+        QVector3D newPos = basePos + offset;
+        newNode->getTransform().setTranslation(newPos);
+        newNode->getTransform().setRotation(baseTransform.getRotation());
+        newNode->getTransform().setScale(baseTransform.getScale());
+    }
+    
+    // Update viewport
+    viewport_->refresh();
+    
+    statusBar_->showMessage(QString("Created %1 copies with %2 mm spacing along %3 axis")
+        .arg(count - 1).arg(distance).arg(axis == 0 ? "X" : (axis == 1 ? "Y" : "Z")), 3000);
 }
 
 } // namespace geantcad

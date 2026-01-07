@@ -56,6 +56,14 @@ private slots:
     void onToggleClippingPlanes();
     void onToggleMeasureTool();
     
+    // Boolean operations
+    void onBooleanUnion();
+    void onBooleanIntersection();
+    void onBooleanSubtraction();
+    
+    // Pattern
+    void onPatternAlongLine();
+    
     // History
     void onUndo();
     void onRedo();

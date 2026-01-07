@@ -28,6 +28,12 @@ ViewCube::ViewCube(QWidget* parent)
     // Initialize with isometric view orientation
     cameraOrientation_ = QQuaternion::fromEulerAngles(-30.0f, 45.0f, 0.0f);
     cubeSize_ = 60.0f;  // Larger cube for the camera
+    
+    // Initialize zoom button positions (will be updated in paintEvent)
+    zoomInCenter_ = QPointF(90, 170);
+    zoomOutCenter_ = QPointF(122, 170);
+    zoomBtnRadius_ = 11.0f;
+    
     updateFaces();
 }
 

@@ -32,13 +32,6 @@ public slots:
 
 signals:
     // === View ===
-    void viewFront();
-    void viewBack();
-    void viewLeft();
-    void viewRight();
-    void viewTop();
-    void viewBottom();
-    void viewIsometric();
     void viewReset();
     void viewFrameSelection();
     
@@ -61,6 +54,14 @@ signals:
     void groupSelected();
     void ungroupSelected();
     
+    // === Boolean Operations ===
+    void booleanUnion();
+    void booleanIntersection();
+    void booleanSubtraction();
+    
+    // === Pattern ===
+    void patternAlongLine();
+    
     // === Analysis ===
     void toggleMeasureTool();
     void toggleClippingPlanes();
@@ -78,6 +79,7 @@ private:
     void createManipulationSection();
     void createShapeSection();
     void createEditSection();
+    void createBooleanSection();
     void createAnalysisSection();
     void createHistorySection();
     
