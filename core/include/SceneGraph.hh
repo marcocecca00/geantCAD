@@ -29,10 +29,18 @@ public:
     VolumeNode* findVolumeById(uint64_t id);
     VolumeNode* findVolumeByName(const std::string& name);
     
-    // Selection
+    // Selection (single and multi)
     VolumeNode* getSelected() const { return selected_; }
     void setSelected(VolumeNode* node);
     void clearSelection();
+    
+    // Multi-selection support
+    const std::vector<VolumeNode*>& getMultiSelection() const { return multiSelection_; }
+    void addToSelection(VolumeNode* node);
+    void removeFromSelection(VolumeNode* node);
+    void toggleSelection(VolumeNode* node);
+    bool isSelected(VolumeNode* node) const;
+    void clearMultiSelection();
 
     // Traversal
     void traverse(std::function<void(VolumeNode*)> visitor);
@@ -63,6 +71,7 @@ public:
 private:
     std::unique_ptr<VolumeNode> root_;
     VolumeNode* selected_ = nullptr;
+    std::vector<VolumeNode*> multiSelection_;  // Multiple selected nodes
     PhysicsConfig physicsConfig_;
     OutputConfig outputConfig_;
     ParticleGunConfig particleGunConfig_;

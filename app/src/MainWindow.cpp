@@ -46,6 +46,7 @@
 #include <QDialogButtonBox>
 #include <QLineEdit>
 #include <QLabel>
+#include <QCheckBox>
 using namespace geantcad;
 
 namespace {
@@ -904,6 +905,11 @@ void MainWindow::connectSignals() {
         statusBar_->showMessage(info, 5000);
     });
     
+    // Boolean operations from context menu
+    connect(viewport_, &Viewport3D::booleanUnionRequested, this, &MainWindow::onBooleanUnion);
+    connect(viewport_, &Viewport3D::booleanSubtractionRequested, this, &MainWindow::onBooleanSubtraction);
+    connect(viewport_, &Viewport3D::booleanIntersectionRequested, this, &MainWindow::onBooleanIntersection);
+    
     // Viewport mode changes -> update toolbar
     connect(viewport_, &Viewport3D::viewChanged, this, [this]() {
         // Refresh viewport after transform
@@ -1233,68 +1239,84 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
 // === Boolean Operations ===
 
 void MainWindow::performBooleanOperation(BooleanOperation operation) {
-    VolumeNode* solidA = sceneGraph_->getSelected();
-    if (!solidA || !solidA->getShape()) {
-        statusBar_->showMessage("Select an object first (Solid A)", 3000);
+    const auto& selection = sceneGraph_->getMultiSelection();
+    
+    // Check minimum selection count
+    if (selection.size() < 2) {
+        statusBar_->showMessage("Select at least 2 objects for boolean operation (Ctrl+Click)", 3000);
         return;
     }
     
-    // Collect all available volumes for second operand
-    std::vector<VolumeNode*> availableVolumes;
-    sceneGraph_->traverse([&](VolumeNode* node) {
-        if (node && node != solidA && node->getShape() && 
-            node->getShape()->getType() != ShapeType::BooleanSolid) {
-            availableVolumes.push_back(node);
-        }
-    });
-    
-    if (availableVolumes.empty()) {
-        statusBar_->showMessage("Need at least two objects for boolean operation", 3000);
+    // Intersection and Subtraction: exactly 2 solids
+    if ((operation == BooleanOperation::Intersection || 
+         operation == BooleanOperation::Subtraction) && selection.size() > 2) {
+        statusBar_->showMessage("Intersection/Subtraction requires exactly 2 objects", 3000);
         return;
     }
     
-    // Dialog to select second object and offset
-    QDialog dialog(this);
+    // Union: can combine multiple solids
     const char* opNames[] = {"Union", "Subtraction", "Intersection"};
+    
+    // Collect selected volumes (filter out World and already-boolean solids)
+    std::vector<VolumeNode*> solids;
+    for (auto* node : selection) {
+        if (node && node != sceneGraph_->getRoot() && node->getShape()) {
+            solids.push_back(node);
+        }
+    }
+    
+    if (solids.size() < 2) {
+        statusBar_->showMessage("Need at least 2 valid solids", 3000);
+        return;
+    }
+    
+    // Check for different materials
+    std::shared_ptr<Material> firstMaterial = solids[0]->getMaterial();
+    bool hasDifferentMaterials = false;
+    for (size_t i = 1; i < solids.size(); ++i) {
+        if (solids[i]->getMaterial() != firstMaterial) {
+            hasDifferentMaterials = true;
+            break;
+        }
+    }
+    
+    // Dialog for boolean operation
+    QDialog dialog(this);
     dialog.setWindowTitle(QString("Boolean %1").arg(opNames[static_cast<int>(operation)]));
     dialog.setModal(true);
     
     QFormLayout* layout = new QFormLayout(&dialog);
     
-    // Info label
-    layout->addRow(new QLabel(QString("Solid A: <b>%1</b>").arg(QString::fromStdString(solidA->getName()))));
-    
-    // Second object selector
-    QComboBox* solidBCombo = new QComboBox(&dialog);
-    for (auto* vol : availableVolumes) {
-        solidBCombo->addItem(QString::fromStdString(vol->getName()));
+    // Show selected solids
+    QString solidsList;
+    for (auto* s : solids) {
+        solidsList += QString::fromStdString(s->getName()) + "\n";
     }
-    layout->addRow("Solid B:", solidBCombo);
+    layout->addRow(new QLabel(QString("Selected Solids:\n%1").arg(solidsList.trimmed())));
     
-    // Relative position (B relative to A)
-    QLabel* posLabel = new QLabel("Relative Position of B (mm):");
-    layout->addRow(posLabel);
-    
-    QDoubleSpinBox* relPosX = new QDoubleSpinBox(&dialog);
-    relPosX->setRange(-1000, 1000);
-    relPosX->setValue(0);
-    layout->addRow("  X:", relPosX);
-    
-    QDoubleSpinBox* relPosY = new QDoubleSpinBox(&dialog);
-    relPosY->setRange(-1000, 1000);
-    relPosY->setValue(0);
-    layout->addRow("  Y:", relPosY);
-    
-    QDoubleSpinBox* relPosZ = new QDoubleSpinBox(&dialog);
-    relPosZ->setRange(-1000, 1000);
-    relPosZ->setValue(0);
-    layout->addRow("  Z:", relPosZ);
+    // Material selection if different materials
+    QComboBox* materialCombo = nullptr;
+    if (hasDifferentMaterials) {
+        layout->addRow(new QLabel("<b>Materials differ - select result material:</b>"));
+        materialCombo = new QComboBox(&dialog);
+        for (auto* s : solids) {
+            if (s->getMaterial()) {
+                materialCombo->addItem(QString::fromStdString(s->getMaterial()->getName()));
+            }
+        }
+        layout->addRow("Material:", materialCombo);
+    }
     
     // Name for result
     QLineEdit* resultName = new QLineEdit(&dialog);
-    resultName->setText(QString::fromStdString(solidA->getName()) + "_" + 
+    resultName->setText(QString::fromStdString(solids[0]->getName()) + "_" + 
                         opNames[static_cast<int>(operation)]);
     layout->addRow("Result Name:", resultName);
+    
+    // Option to hide original solids
+    QCheckBox* hideOriginals = new QCheckBox("Hide original solids after operation", &dialog);
+    hideOriginals->setChecked(true);
+    layout->addRow(hideOriginals);
     
     QDialogButtonBox* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -1304,29 +1326,115 @@ void MainWindow::performBooleanOperation(BooleanOperation operation) {
     
     if (dialog.exec() != QDialog::Accepted) return;
     
-    // Get selected second volume
-    int idx = solidBCombo->currentIndex();
-    if (idx < 0 || idx >= static_cast<int>(availableVolumes.size())) return;
-    VolumeNode* solidB = availableVolumes[idx];
+    // Determine result material
+    std::shared_ptr<Material> resultMaterial;
+    if (hasDifferentMaterials && materialCombo) {
+        int matIdx = materialCombo->currentIndex();
+        if (matIdx >= 0 && matIdx < static_cast<int>(solids.size())) {
+            resultMaterial = solids[matIdx]->getMaterial();
+        }
+    } else {
+        resultMaterial = firstMaterial;
+    }
     
-    // Create the boolean solid shape
-    auto boolShape = makeBooleanSolid(
-        operation,
-        solidA->getName(),
-        solidB->getName(),
-        relPosX->value(),
-        relPosY->value(),
-        relPosZ->value(),
-        0.0, 0.0, 0.0  // No rotation for now
-    );
+    // Calculate mixed color (average of all solid colors)
+    double mixR = 0, mixG = 0, mixB = 0;
+    int colorCount = 0;
+    for (auto* s : solids) {
+        if (s->getMaterial()) {
+            auto& vis = s->getMaterial()->getVisual();
+            mixR += vis.r;
+            mixG += vis.g;
+            mixB += vis.b;
+            colorCount++;
+        }
+    }
+    if (colorCount > 0) {
+        mixR /= colorCount;
+        mixG /= colorCount;
+        mixB /= colorCount;
+    }
     
-    // Create new volume node with the boolean shape
-    VolumeNode* resultNode = sceneGraph_->createVolume(resultName->text().toStdString());
-    resultNode->setShape(std::move(boolShape));
-    resultNode->setMaterial(solidA->getMaterial());  // Use material from solid A
+    // For Union: chain multiple solids
+    // For Intersection/Subtraction: just 2 solids
+    VolumeNode* resultNode = nullptr;
     
-    // Position at solid A's position
-    resultNode->getTransform().setTranslation(solidA->getTransform().getTranslation());
+    if (operation == BooleanOperation::Union && solids.size() > 2) {
+        // Chain unions: (((A + B) + C) + D) ...
+        std::string currentName = solids[0]->getName();
+        
+        for (size_t i = 1; i < solids.size(); ++i) {
+            std::string nextName = solids[i]->getName();
+            std::string unionName = (i == solids.size() - 1) 
+                ? resultName->text().toStdString()
+                : currentName + "_" + nextName;
+            
+            // Calculate relative position
+            QVector3D posA = solids[0]->getTransform().getTranslation();
+            QVector3D posB = solids[i]->getTransform().getTranslation();
+            QVector3D relPos = posB - posA;
+            
+            auto boolShape = makeBooleanSolid(
+                BooleanOperation::Union,
+                currentName,
+                nextName,
+                relPos.x(), relPos.y(), relPos.z(),
+                0.0, 0.0, 0.0
+            );
+            
+            resultNode = sceneGraph_->createVolume(unionName);
+            resultNode->setShape(std::move(boolShape));
+            currentName = unionName;
+        }
+    } else {
+        // Single operation (2 solids)
+        VolumeNode* solidA = solids[0];
+        VolumeNode* solidB = solids[1];
+        
+        // Calculate relative position of B with respect to A
+        QVector3D posA = solidA->getTransform().getTranslation();
+        QVector3D posB = solidB->getTransform().getTranslation();
+        QVector3D relPos = posB - posA;
+        
+        auto boolShape = makeBooleanSolid(
+            operation,
+            solidA->getName(),
+            solidB->getName(),
+            relPos.x(), relPos.y(), relPos.z(),
+            0.0, 0.0, 0.0
+        );
+        
+        resultNode = sceneGraph_->createVolume(resultName->text().toStdString());
+        resultNode->setShape(std::move(boolShape));
+    }
+    
+    if (resultNode) {
+        // Set material and color
+        if (resultMaterial) {
+            // Create a copy with mixed color
+            auto mixedMaterial = std::make_shared<Material>(*resultMaterial);
+            mixedMaterial->getVisual().r = mixR;
+            mixedMaterial->getVisual().g = mixG;
+            mixedMaterial->getVisual().b = mixB;
+            resultNode->setMaterial(mixedMaterial);
+        }
+        
+        // Position at first solid's position
+        resultNode->getTransform().setTranslation(solids[0]->getTransform().getTranslation());
+        
+        // Hide original solids if requested
+        if (hideOriginals->isChecked()) {
+            for (auto* s : solids) {
+                s->setVisible(false);
+            }
+        }
+    }
+    
+    // Clear selection and select result
+    sceneGraph_->clearSelection();
+    if (resultNode) {
+        sceneGraph_->setSelected(resultNode);
+    }
     
     // Update viewport
     viewport_->refresh();

@@ -1162,8 +1162,17 @@ void Viewport3D::mousePressEvent(QMouseEvent* event) {
             }
             
             if (pickedNode && pickedNode != sceneGraph_->getRoot()) {
-                // Clicked on an object - select it and show info
-                sceneGraph_->setSelected(pickedNode);
+                // Check for Ctrl modifier for multi-selection
+                bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
+                
+                if (ctrlPressed) {
+                    // Ctrl+Click = toggle selection (add/remove from multi-selection)
+                    sceneGraph_->toggleSelection(pickedNode);
+                } else {
+                    // Normal click = single selection (clear others)
+                    sceneGraph_->setSelected(pickedNode);
+                }
+                
                 updateSelectionHighlight(pickedNode);
                 emit selectionChanged(pickedNode);
                 emit objectInfoRequested(pickedNode);
@@ -1675,6 +1684,9 @@ void Viewport3D::wheelEvent(QWheelEvent* event) {
 
 #ifndef GEANTCAD_NO_VTK
 void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
+    // Get multi-selection from scene graph
+    const auto& multiSelection = sceneGraph_ ? sceneGraph_->getMultiSelection() : std::vector<VolumeNode*>();
+    
     // Reset all actors to normal appearance
     for (auto& pair : actors_) {
         if (!pair.second) continue;
@@ -1684,7 +1696,10 @@ void Viewport3D::updateSelectionHighlight(VolumeNode* selectedNode) {
         
         if (!node || !actor) continue;
         
-        if (node == selectedNode) {
+        // Check if this node is in multi-selection
+        bool isSelected = std::find(multiSelection.begin(), multiSelection.end(), node) != multiSelection.end();
+        
+        if (isSelected) {
             // Subtle selection: keep original color, add thin outline
             if (auto material = node->getMaterial()) {
                 auto& visual = material->getVisual();
@@ -1803,6 +1818,34 @@ void Viewport3D::showContextMenu(const QPoint& pos) {
             QKeyEvent* ke = new QKeyEvent(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
             QCoreApplication::postEvent(this->window(), ke);
         });
+        
+        // Boolean operations (show only if 2+ solids are selected)
+        const auto& multiSelection = sceneGraph_->getMultiSelection();
+        if (multiSelection.size() >= 2) {
+            contextMenu.addSeparator();
+            
+            QMenu* boolMenu = contextMenu.addMenu("Boolean Operations");
+            
+            QAction* unionAction = boolMenu->addAction("Union (combine)");
+            connect(unionAction, &QAction::triggered, [this]() {
+                emit booleanUnionRequested();
+            });
+            
+            if (multiSelection.size() == 2) {
+                QAction* subtractAction = boolMenu->addAction("Subtraction (A - B)");
+                connect(subtractAction, &QAction::triggered, [this]() {
+                    emit booleanSubtractionRequested();
+                });
+                
+                QAction* intersectAction = boolMenu->addAction("Intersection (A ∩ B)");
+                connect(intersectAction, &QAction::triggered, [this]() {
+                    emit booleanIntersectionRequested();
+                });
+            } else {
+                QAction* infoAction = boolMenu->addAction("(Subtraction/Intersection: select 2 solids)");
+                infoAction->setEnabled(false);
+            }
+        }
         
     } else {
         // ===== RIGHT-CLICK ON BACKGROUND: Show view settings =====

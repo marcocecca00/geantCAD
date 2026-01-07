@@ -70,11 +70,63 @@ void SceneGraph::setSelected(VolumeNode* node) {
     if (selected_ == node) return;
     
     selected_ = node;
+    
+    // Also update multi-selection to contain just this node
+    multiSelection_.clear();
+    if (node) {
+        multiSelection_.push_back(node);
+    }
+    
     notifySelectionChanged();
 }
 
 void SceneGraph::clearSelection() {
     setSelected(nullptr);
+    clearMultiSelection();
+}
+
+void SceneGraph::addToSelection(VolumeNode* node) {
+    if (!node || isSelected(node)) return;
+    
+    multiSelection_.push_back(node);
+    
+    // Update primary selection to most recently added
+    selected_ = node;
+    notifySelectionChanged();
+}
+
+void SceneGraph::removeFromSelection(VolumeNode* node) {
+    if (!node) return;
+    
+    auto it = std::find(multiSelection_.begin(), multiSelection_.end(), node);
+    if (it != multiSelection_.end()) {
+        multiSelection_.erase(it);
+        
+        // Update primary selection
+        if (selected_ == node) {
+            selected_ = multiSelection_.empty() ? nullptr : multiSelection_.back();
+        }
+        notifySelectionChanged();
+    }
+}
+
+void SceneGraph::toggleSelection(VolumeNode* node) {
+    if (isSelected(node)) {
+        removeFromSelection(node);
+    } else {
+        addToSelection(node);
+    }
+}
+
+bool SceneGraph::isSelected(VolumeNode* node) const {
+    if (!node) return false;
+    return std::find(multiSelection_.begin(), multiSelection_.end(), node) != multiSelection_.end();
+}
+
+void SceneGraph::clearMultiSelection() {
+    multiSelection_.clear();
+    selected_ = nullptr;
+    notifySelectionChanged();
 }
 
 void SceneGraph::traverse(std::function<void(VolumeNode*)> visitor) {

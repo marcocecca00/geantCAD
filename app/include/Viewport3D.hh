@@ -135,6 +135,11 @@ signals:
     void interactionModeChanged(InteractionMode mode);  // Sync toolbar with viewport
     void mouseWorldCoordinates(double x, double y, double z);  // Real-time mouse position
     void objectInfoRequested(VolumeNode* node);  // Show object info in status bar
+    
+    // Boolean operations from context menu
+    void booleanUnionRequested();
+    void booleanSubtractionRequested();
+    void booleanIntersectionRequested();
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
